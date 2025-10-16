@@ -153,10 +153,10 @@ const Space = () => {
           <Logo />
         </Link>
         <div className="flex items-center gap-4 ml-12">
-          <div className="sketch-input">
+          <div className="sketch-input w-80">
             <Input
               placeholder="start scraping"
-              className="h-10 w-64 border-0 bg-transparent text-center text-base shadow-none"
+              className="h-10 w-full border-0 bg-transparent text-center text-base shadow-none"
               value={scrapeInput}
               onChange={(e) => setScrapeInput(e.target.value)}
               onKeyDown={(e) => {
