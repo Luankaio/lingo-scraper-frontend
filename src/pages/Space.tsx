@@ -38,6 +38,73 @@ type CachedScrapeEntry = {
 
 const normalizeCacheKey = (url: string) => url.trim();
 
+const SCRAPE_HISTORY_STORAGE_KEY = "lingo-scraper-history-v1";
+const SCRAPE_HISTORY_LIMIT = 100;
+
+const getScrapeHistoryKey = (space: string) => `${SCRAPE_HISTORY_STORAGE_KEY}:${space}`;
+
+const loadScrapeHistory = (space: string): string[] => {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  const storageKey = getScrapeHistoryKey(space);
+
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw);
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    const unique = new Set<string>();
+    const cleaned: string[] = [];
+
+    for (const entry of parsed) {
+      if (typeof entry !== "string") {
+        continue;
+      }
+
+      const normalized = normalizeCacheKey(entry);
+
+      if (!normalized || unique.has(normalized)) {
+        continue;
+      }
+
+      unique.add(normalized);
+      cleaned.push(normalized);
+
+      if (cleaned.length >= SCRAPE_HISTORY_LIMIT) {
+        break;
+      }
+    }
+
+    return cleaned;
+  } catch {
+    return [];
+  }
+};
+
+const saveScrapeHistory = (space: string, history: string[]) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const storageKey = getScrapeHistoryKey(space);
+
+  try {
+    const safe = history.slice(0, SCRAPE_HISTORY_LIMIT);
+    window.localStorage.setItem(storageKey, JSON.stringify(safe));
+  } catch {
+    // Ignore storage write errors (quota exceeded, etc.)
+  }
+};
+
 const loadScrapeCache = (): Record<string, CachedScrapeEntry> => {
   if (typeof window === "undefined") {
     return {};
@@ -124,6 +191,7 @@ const Space = () => {
   const [fontSizeMultiplier, setFontSizeMultiplier] = useState(1);
   const [isBold, setIsBold] = useState(false);
   const [showLinks, setShowLinks] = useState(true);
+  const [scrapeHistory, setScrapeHistory] = useState<string[]>([]);
 
   useEffect(() => {
     if (!name) {
@@ -138,6 +206,22 @@ const Space = () => {
     staleTime: Infinity,
     retry: 1
   });
+
+  useEffect(() => {
+    if (!name) {
+      return;
+    }
+
+    setScrapeHistory(loadScrapeHistory(name));
+  }, [name]);
+
+  useEffect(() => {
+    if (!name) {
+      return;
+    }
+
+    saveScrapeHistory(name, scrapeHistory);
+  }, [name, scrapeHistory]);
 
   useEffect(() => {
     if (!spaceQuery.data) {
@@ -213,13 +297,41 @@ const Space = () => {
   const savedLinks = useMemo(() => {
     const pattern = /(https?:\/\/[^\s]+)/g;
     const matches = draft.match(pattern) ?? [];
-    return Array.from(new Set(matches));
-  }, [draft]);
+    const fromNotes = Array.from(new Set(matches.map(normalizeCacheKey)));
+    const unique = new Set<string>();
+    const combined: string[] = [];
+
+    for (const url of [...scrapeHistory, ...fromNotes]) {
+      const normalized = normalizeCacheKey(url);
+
+      if (!normalized || unique.has(normalized)) {
+        continue;
+      }
+
+      unique.add(normalized);
+      combined.push(normalized);
+    }
+
+    return combined;
+  }, [draft, scrapeHistory]);
 
   const savedWords = useMemo(() => spaceQuery.data?.words ?? [], [spaceQuery.data?.words]);
 
+  const recordScrapeHistoryEntry = (url: string) => {
+    const normalized = normalizeCacheKey(url);
+
+    if (!normalized) {
+      return;
+    }
+
+    setScrapeHistory((previous) => {
+      const next = [normalized, ...previous.filter((entry) => entry !== normalized)];
+      return next.slice(0, SCRAPE_HISTORY_LIMIT);
+    });
+  };
+
   const handleScrape = async (targetUrl: string, { showToast = true }: { showToast?: boolean } = {}) => {
-    const url = targetUrl.trim();
+    const url = normalizeCacheKey(targetUrl);
 
     if (!url) {
       return;
@@ -229,6 +341,7 @@ const Space = () => {
 
     if (cached) {
       setScrapedData(cached);
+      recordScrapeHistoryEntry(url);
       if (showToast) {
         toast.success("Conteúdo carregado do cache!");
       }
@@ -239,6 +352,7 @@ const Space = () => {
       const data = await scrapeUrl({ url, space_name: name! });
       setScrapedData(data);
       setCachedScrape(url, data);
+      recordScrapeHistoryEntry(url);
       if (showToast) {
         toast.success("Página raspada com sucesso!");
       }
