@@ -1,3 +1,4 @@
+import { ReactNode, useCallback, useState } from "react";
 import { NewsData } from "@/lib/api";
 
 interface NewsViewerProps {
@@ -7,6 +8,72 @@ interface NewsViewerProps {
 }
 
 const NewsViewer = ({ data, fontSize, fontWeight }: NewsViewerProps) => {
+  const [selectedWord, setSelectedWord] = useState<string | null>(null);
+
+  const handleWordToggle = useCallback((wordKey: string) => {
+    setSelectedWord((previous) => (previous === wordKey ? null : wordKey));
+  }, []);
+
+  const renderInteractiveText = useCallback(
+    (text: string, keyPrefix: string): ReactNode[] => {
+      const tokens = text.split(/(\s+)/);
+
+      return tokens.flatMap((token, index) => {
+        if (!token.length) {
+          return [];
+        }
+
+        if (/^\s+$/.test(token)) {
+          return token.split("\n").flatMap((segment, segIndex) => {
+            const nodes: ReactNode[] = [];
+
+            if (segIndex > 0) {
+              nodes.push(
+                <br key={`${keyPrefix}-br-${index}-${segIndex}`} />
+              );
+            }
+
+            if (segment) {
+              nodes.push(
+                <span
+                  key={`${keyPrefix}-space-${index}-${segIndex}`}
+                  style={{ whiteSpace: "pre" }}
+                >
+                  {segment}
+                </span>
+              );
+            }
+
+            return nodes;
+          });
+        }
+
+        const tokenKey = `${keyPrefix}-word-${index}`;
+        const isActive = selectedWord === tokenKey;
+
+        return (
+          <span
+            key={tokenKey}
+            role="button"
+            tabIndex={0}
+            aria-pressed={isActive}
+            className={`interactive-word ${isActive ? "interactive-word--active" : ""}`}
+            onClick={() => handleWordToggle(tokenKey)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                handleWordToggle(tokenKey);
+              }
+            }}
+          >
+            <span className="interactive-word__label">{token}</span>
+          </span>
+        );
+      });
+    },
+    [handleWordToggle, selectedWord]
+  );
+
   return (
     <div
       className="h-full overflow-y-auto bg-[#fffef8] border-4 border-foreground shadow-[20px_24px_0_-6px_#111,20px_24px_0_0_#fffef8]"
@@ -16,9 +83,11 @@ const NewsViewer = ({ data, fontSize, fontWeight }: NewsViewerProps) => {
         <header className="mb-12 flex flex-col gap-6">
           <div className="grid gap-5">
             <h1 style={{ fontFamily: "'Gloria Hallelujah', cursive", fontSize: "3em", fontWeight: 700 }}>
-              {data.title || "Sem título"}
+              {renderInteractiveText(data.title || "Sem título", "headline")}
             </h1>
-            <p style={{ fontSize: "1.8em" }}>{data.subtitle || ""}</p>
+            <p style={{ fontSize: "1.8em" }}>
+              {renderInteractiveText(data.subtitle || "", "subtitle")}
+            </p>
             <div
               className="inline-flex items-center gap-2 px-4 py-2 border-2 border-foreground bg-background shadow-[6px_6px_0_0_#111] transform -rotate-1"
               style={{ fontSize: "1em" }}
@@ -41,12 +110,16 @@ const NewsViewer = ({ data, fontSize, fontWeight }: NewsViewerProps) => {
           {(data.sections || []).map((section, index) => (
             <article key={index} className="relative border-4 border-foreground bg-gradient-to-br from-foreground/5 to-transparent p-9">
               <div className="pointer-events-none absolute inset-3 border-2 border-foreground/10"></div>
-              {section.heading ? <h2 style={{ fontSize: "1.75em" }}>{section.heading}</h2> : null}
+              {section.heading ? (
+                <h2 style={{ fontSize: "1.75em" }}>
+                  {renderInteractiveText(section.heading, `section-${index}-heading`)}
+                </h2>
+              ) : null}
               {(section.blocks || []).map((block, bIndex) => {
                 if (block.type === "paragraph") {
                   return (
                     <p key={bIndex} style={{ fontSize: "1.25em" }}>
-                      {block.text}
+                      {renderInteractiveText(block.text || "", `section-${index}-paragraph-${bIndex}`)}
                     </p>
                   );
                 }
@@ -58,7 +131,7 @@ const NewsViewer = ({ data, fontSize, fontWeight }: NewsViewerProps) => {
                           <span className="absolute left-2 top-0" style={{ fontSize: "1em" }}>
                             ✦
                           </span>
-                          {item}
+                          {renderInteractiveText(item || "", `section-${index}-list-${bIndex}-${iIndex}`)}
                         </li>
                       ))}
                     </ul>
