@@ -1,0 +1,183 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "Patrick Hand", "Gloria Hallelujah", cursive;
+  font-weight: 400;
+}
+
+@layer base {
+  :root {
+    --background: 42 31% 96%;
+    --foreground: 0 0% 10%;
+
+    --card: 42 31% 96%;
+    --card-foreground: 0 0% 10%;
+
+    --popover: 42 31% 96%;
+    --popover-foreground: 0 0% 10%;
+
+    --primary: 0 0% 0%;
+    --primary-foreground: 42 31% 96%;
+
+    --secondary: 42 23% 90%;
+    --secondary-foreground: 0 0% 10%;
+
+    --muted: 42 20% 88%;
+    --muted-foreground: 0 0% 42%;
+
+    --accent: 42 28% 92%;
+    --accent-foreground: 0 0% 15%;
+
+    --destructive: 0 0% 12%;
+    --destructive-foreground: 42 31% 96%;
+
+    --border: 0 0% 16%;
+    --input: 0 0% 16%;
+    --ring: 0 0% 12%;
+
+    --radius: 2px;
+
+    --paper-beige: 42 32% 94%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body {
+    @apply h-full;
+  }
+
+  body {
+    @apply min-h-screen bg-background text-foreground;
+    background-image:
+      linear-gradient(
+        0deg,
+        transparent 0,
+        transparent 22px,
+        hsl(var(--border) / 0.08) 23px
+      ),
+      linear-gradient(
+        90deg,
+        transparent 0,
+        transparent 22px,
+        hsl(var(--border) / 0.06) 23px
+      ),
+      radial-gradient(circle at 20% 20%, hsl(var(--border) / 0.08) 0, transparent 50%),
+      radial-gradient(circle at 75% 15%, hsl(var(--border) / 0.05) 0, transparent 60%),
+      radial-gradient(circle at 30% 80%, hsl(var(--border) / 0.06) 0, transparent 55%),
+      radial-gradient(circle at 70% 75%, hsl(var(--border) / 0.05) 0, transparent 45%);
+    background-blend-mode: multiply;
+  }
+
+  code {
+    font-family: "Gloria Hallelujah", "Patrick Hand", cursive;
+  }
+}
+
+@layer components {
+  .paper-background {
+    background: hsl(var(--paper-beige));
+  }
+
+  .paper-sheet::after {
+    content: "";
+    position: absolute;
+    inset: clamp(1rem, 4vw, 2rem);
+    border: 2px dashed hsl(var(--border) / 0.35);
+    pointer-events: none;
+  }
+
+  .paper-sheet-inner {
+    position: absolute;
+    inset: clamp(0.5rem, 3vw, 1.5rem);
+    border: 2px dashed hsl(var(--border) / 0.25);
+    mix-blend-mode: multiply;
+  }
+
+  .paper-grain {
+    position: absolute;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 18px,
+        hsl(var(--border) / 0.05) 19px
+      ),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.05 0 0 0 0 0.05 0 0 0 0 0.05 0 0 0 0.18 0'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E");
+    background-size:
+      100% 100%,
+      220px 220px;
+    mix-blend-mode: multiply;
+    opacity: 0.85;
+  }
+
+  .sketch-heading {
+    text-shadow: 1px 1px 0 hsl(var(--border) / 0.7);
+  }
+
+  .form-card::after,
+  .feature-card::after {
+    content: "";
+    position: absolute;
+    inset: 12px;
+    border: 2px dashed hsl(var(--border) / 0.2);
+    pointer-events: none;
+  }
+
+  .sketch-input {
+    position: relative;
+    transform: rotate(-1.2deg);
+    border: 3px solid hsl(var(--border));
+    box-shadow: 8px 8px 0 0 hsl(var(--border) / 0.4);
+    background: hsl(var(--paper-beige));
+  }
+
+  .sketch-input::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 32px,
+      hsl(var(--border) / 0.25) 33px
+    );
+    opacity: 0.9;
+    pointer-events: none;
+  }
+
+  .feature-card-outline {
+    position: absolute;
+    inset: 18px;
+    border: 2px dashed hsl(var(--border) / 0.25);
+    pointer-events: none;
+  }
+}
+
+@layer utilities {
+  .handdrawn-box {
+    position: relative;
+    border: 4px solid hsl(var(--border));
+    transform: rotate(-1.5deg);
+    box-shadow: 10px 12px 0 0 hsl(var(--border) / 0.5);
+  }
+
+  .handdrawn-box::after {
+    content: "";
+    position: absolute;
+    inset: 6px;
+    border: 2px dashed hsl(var(--border) / 0.3);
+  }
+
+  .form-card-outline {
+    position: absolute;
+    inset: clamp(0.75rem, 4vw, 1.5rem);
+    border: 2px dashed hsl(var(--border) / 0.25);
+    pointer-events: none;
+  }
+}
