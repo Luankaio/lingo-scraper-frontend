@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="paper" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f8f3e6" />
+      <stop offset="100%" stop-color="#f2e8d4" />
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="8" fill="url(#paper)" stroke="#1a1a1a" stroke-width="3" />
+  <rect x="8" y="8" width="48" height="48" rx="6" fill="none" stroke="#1a1a1a" stroke-width="2" stroke-dasharray="6 6" stroke-linecap="round" stroke-opacity="0.45" />
+  <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#1a1a1a" font-family="'Patrick Hand', 'Gloria Hallelujah', 'Segoe Print', 'Comic Sans MS', cursive" font-size="28" font-weight="700" letter-spacing="2">
+    LS
+  </text>
+</svg>

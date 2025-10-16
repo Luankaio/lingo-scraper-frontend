@@ -25,7 +25,7 @@ const Index = () => {
         <div className="paper-sheet-inner pointer-events-none" aria-hidden />
 
         <div className="flex flex-col items-center gap-8">
-          <Logo />
+          <Logo variant="large" />
           <p className="max-w-xl text-lg text-foreground/80 sm:text-xl">
             Learn languages with your own news scraper.
           </p>
