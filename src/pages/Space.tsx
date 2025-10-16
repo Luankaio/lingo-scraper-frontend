@@ -26,7 +26,7 @@ type Params = {
 
 const getContentFromDocument = (content: string[] | undefined) => content?.join("\n\n") ?? "";
 
-const toggleButtons = ["✶", "◎", "≡"] as const;
+const toggleButtons = ["≡"] as const;
 
 const SCRAPE_CACHE_KEY = "lingo-scraper-cache-v1";
 const SCRAPE_CACHE_TTL = 1000 * 60 * 60 * 12; // 12 hours
@@ -424,7 +424,7 @@ const Space = () => {
                 type="button"
                 aria-label="Toggle sidebar"
                 onClick={toggleSidebar}
-                className="sketch-border inline-flex h-12 w-12 items-center justify-center bg-background text-2xl text-foreground transition-transform duration-300 hover:-translate-y-1 hover:rotate-2"
+                className="sketch-border sidebar-toggle-frame inline-flex h-12 w-12 items-center justify-center border-2 border-foreground bg-background text-2xl text-foreground transition-transform duration-300 hover:-translate-y-1 hover:rotate-2"
                 style={{ transitionDelay: `${index * 40}ms` }}
               >
                 {symbol}

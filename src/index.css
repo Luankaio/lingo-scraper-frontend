@@ -151,6 +151,44 @@
     pointer-events: none;
   }
 
+  .news-frame {
+    position: relative;
+    min-height: 100%;
+    padding: 4rem 3rem 5rem;
+    box-sizing: border-box;
+  }
+
+  .news-frame::after {
+    content: "";
+    position: absolute;
+    inset: clamp(0.75rem, 2.5vw, 1.5rem);
+    border: 2px dashed hsl(var(--border) / 0.3);
+    pointer-events: none;
+  }
+
+  .sidebar-toggle-frame {
+    position: relative;
+  }
+
+  .sidebar-toggle-frame::before,
+  .sidebar-toggle-frame::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+    border: 2px solid hsl(var(--border) / 0.6);
+  }
+
+  .sidebar-toggle-frame::before {
+    inset: 4px;
+    transform: rotate(-1.5deg);
+  }
+
+  .sidebar-toggle-frame::after {
+    inset: -4px;
+    border-color: hsl(var(--border) / 0.3);
+    transform: rotate(1.5deg);
+  }
+
   .feature-card-outline {
     position: absolute;
     inset: 18px;
