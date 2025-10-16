@@ -28,6 +28,88 @@ const getContentFromDocument = (content: string[] | undefined) => content?.join(
 
 const toggleButtons = ["✶", "◎", "≡"] as const;
 
+const SCRAPE_CACHE_KEY = "lingo-scraper-cache-v1";
+const SCRAPE_CACHE_TTL = 1000 * 60 * 60 * 12; // 12 hours
+
+type CachedScrapeEntry = {
+  data: NewsData;
+  timestamp: number;
+};
+
+const normalizeCacheKey = (url: string) => url.trim();
+
+const loadScrapeCache = (): Record<string, CachedScrapeEntry> => {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  try {
+    const raw = window.localStorage.getItem(SCRAPE_CACHE_KEY);
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw) as Record<string, CachedScrapeEntry> | null;
+    if (!parsed || typeof parsed !== "object") {
+      return {};
+    }
+
+    return parsed;
+  } catch {
+    return {};
+  }
+};
+
+const saveScrapeCache = (cache: Record<string, CachedScrapeEntry>) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(SCRAPE_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // Ignore storage write errors (quota exceeded, etc.)
+  }
+};
+
+const getCachedScrape = (url: string): NewsData | null => {
+  const key = normalizeCacheKey(url);
+
+  if (!key) {
+    return null;
+  }
+
+  const cache = loadScrapeCache();
+  const entry = cache[key];
+
+  if (!entry) {
+    return null;
+  }
+
+  if (Date.now() - entry.timestamp > SCRAPE_CACHE_TTL) {
+    delete cache[key];
+    saveScrapeCache(cache);
+    return null;
+  }
+
+  return entry.data;
+};
+
+const setCachedScrape = (url: string, data: NewsData) => {
+  const key = normalizeCacheKey(url);
+
+  if (!key) {
+    return;
+  }
+
+  const cache = loadScrapeCache();
+  cache[key] = {
+    data,
+    timestamp: Date.now()
+  };
+  saveScrapeCache(cache);
+};
+
 const Space = () => {
   const { spaceName } = useParams<Params>();
   const navigate = useNavigate();
@@ -136,6 +218,35 @@ const Space = () => {
 
   const savedWords = useMemo(() => spaceQuery.data?.words ?? [], [spaceQuery.data?.words]);
 
+  const handleScrape = async (targetUrl: string, { showToast = true }: { showToast?: boolean } = {}) => {
+    const url = targetUrl.trim();
+
+    if (!url) {
+      return;
+    }
+
+    const cached = getCachedScrape(url);
+
+    if (cached) {
+      setScrapedData(cached);
+      if (showToast) {
+        toast.success("Conteúdo carregado do cache!");
+      }
+      return;
+    }
+
+    try {
+      const data = await scrapeUrl({ url, space_name: name! });
+      setScrapedData(data);
+      setCachedScrape(url, data);
+      if (showToast) {
+        toast.success("Página raspada com sucesso!");
+      }
+    } catch (error) {
+      toast.error("Erro ao raspar: " + (error instanceof Error ? error.message : "Erro desconhecido"));
+    }
+  };
+
   if (!name) {
     return null;
   }
@@ -161,24 +272,18 @@ const Space = () => {
               onChange={(e) => setScrapeInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
-                  if (!scrapeInput.trim()) return;
-                  scrapeUrl({ url: scrapeInput.trim(), space_name: name! }).then(setScrapedData).catch((error) => {
-                    toast.error("Erro ao raspar: " + (error instanceof Error ? error.message : "Erro desconhecido"));
-                  });
+                  e.preventDefault();
+                  void handleScrape(scrapeInput, { showToast: false });
                 }
               }}
             />
           </div>
-          <Button type="button" variant="ghost" className="px-3 hover:bg-foreground/10" onClick={async () => {
-            if (!scrapeInput.trim()) return;
-            try {
-              const data = await scrapeUrl({ url: scrapeInput.trim(), space_name: name! });
-              setScrapedData(data);
-              toast.success("Página raspada com sucesso!");
-            } catch (error) {
-              toast.error("Erro ao raspar: " + (error instanceof Error ? error.message : "Erro desconhecido"));
-            }
-          }}>
+          <Button
+            type="button"
+            variant="ghost"
+            className="px-3 hover:bg-foreground/10"
+            onClick={() => void handleScrape(scrapeInput)}
+          >
             <Globe size={16} />
           </Button>
         </div>
@@ -275,15 +380,9 @@ const Space = () => {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="block truncate text-left text-foreground underline-offset-2 hover:underline"
-                            onClick={async (e) => {
+                            onClick={(e) => {
                               e.preventDefault();
-                              try {
-                                const data = await scrapeUrl({ url, space_name: name! });
-                                setScrapedData(data);
-                                toast.success("Página raspada com sucesso!");
-                              } catch (error) {
-                                toast.error("Erro ao raspar: " + (error instanceof Error ? error.message : "Erro desconhecido"));
-                              }
+                              void handleScrape(url);
                             }}
                           >
                             {url}
