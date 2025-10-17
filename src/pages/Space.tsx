@@ -206,12 +206,12 @@ const Space = () => {
   });
   const languageMenuRef = useRef<HTMLDivElement | null>(null);
   const translationControllerRef = useRef<AbortController | null>(null);
-  const [selectedWordInfo, setSelectedWordInfo] = useState<{ word: string; nonce: number } | null>(null);
+  const [selectedTextInfo, setSelectedTextInfo] = useState<{ text: string; nonce: number } | null>(null);
   const [translatedWord, setTranslatedWord] = useState<string | null>(null);
   const [detectedLanguage, setDetectedLanguage] = useState<string | null>(null);
   const [isTranslatingWord, setIsTranslatingWord] = useState(false);
   const [translationError, setTranslationError] = useState<string | null>(null);
-  const selectedWord = selectedWordInfo?.word ?? null;
+  const selectedText = selectedTextInfo?.text ?? null;
 
   useEffect(() => {
     if (!name) {
@@ -374,13 +374,13 @@ const Space = () => {
     setIsLanguageMenuOpen(false);
   }, []);
 
-  const handleWordTranslate = useCallback((word: string | null) => {
-    const normalized = word?.trim() ?? "";
+  const handleSelectionChange = useCallback((text: string | null) => {
+    const normalized = text?.trim() ?? "";
 
     if (!normalized) {
       translationControllerRef.current?.abort();
       translationControllerRef.current = null;
-      setSelectedWordInfo(null);
+      setSelectedTextInfo(null);
       setTranslatedWord(null);
       setDetectedLanguage(null);
       setTranslationError(null);
@@ -391,11 +391,11 @@ const Space = () => {
     setTranslatedWord(null);
     setDetectedLanguage(null);
     setTranslationError(null);
-    setSelectedWordInfo({ word: normalized, nonce: Date.now() });
+    setSelectedTextInfo({ text: normalized, nonce: Date.now() });
   }, []);
 
   useEffect(() => {
-    const entry = selectedWordInfo;
+  const entry = selectedTextInfo;
 
     if (!entry) {
       translationControllerRef.current?.abort();
@@ -415,7 +415,7 @@ const Space = () => {
     setTranslatedWord(null);
 
     translateWord({
-      text: entry.word,
+  text: entry.text,
       targetLanguage: selectedLanguage.code,
       signal: controller.signal
     })
@@ -442,21 +442,21 @@ const Space = () => {
     return () => {
       controller.abort();
     };
-  }, [selectedWordInfo, selectedLanguage.code]);
+  }, [selectedTextInfo, selectedLanguage.code]);
 
   useEffect(() => {
-    if (!selectedWordInfo) {
+    if (!selectedTextInfo) {
       return;
     }
 
     setTranslatedWord(null);
     setTranslationError(null);
-  }, [selectedLanguage.code, selectedWordInfo]);
+  }, [selectedLanguage.code, selectedTextInfo]);
 
   useEffect(() => {
     translationControllerRef.current?.abort();
     translationControllerRef.current = null;
-    setSelectedWordInfo(null);
+    setSelectedTextInfo(null);
     setTranslatedWord(null);
     setDetectedLanguage(null);
     setTranslationError(null);
@@ -737,7 +737,7 @@ const Space = () => {
                   <span className="text-xs uppercase tracking-[0.3em] text-foreground/60">
                     Tradução ({selectedLanguage.name})
                   </span>
-                  {selectedWord ? (
+                  {selectedText ? (
                     <>
                       {isTranslatingWord ? (
                         <span className="text-sm text-foreground/70">Traduzindo…</span>
@@ -749,7 +749,7 @@ const Space = () => {
                         <span className="text-sm text-foreground/60">Nenhum resultado.</span>
                       )}
                       <span className="text-xs text-foreground/60">
-                        Palavra: <span className="font-medium text-foreground">{selectedWord}</span>
+                        Trecho: <span className="font-medium text-foreground">{selectedText}</span>
                         {detectedLanguageLabel ? (
                           <span className="ml-1 uppercase tracking-wide text-foreground/50">
                             ({detectedLanguageLabel})
@@ -759,7 +759,7 @@ const Space = () => {
                     </>
                   ) : (
                     <span className="text-sm text-foreground/60">
-                      Clique em qualquer palavra para traduzir para {selectedLanguage.name}.
+                      Clique e arraste para selecionar palavras ou frases e traduzir para {selectedLanguage.name}.
                     </span>
                   )}
                 </div>
@@ -863,8 +863,8 @@ const Space = () => {
                     data={scrapedData}
                     fontSize={`${fontSizeMultiplier}em`}
                     fontWeight={isBold ? 'bold' : 'normal'}
-                    onWordClick={handleWordTranslate}
-                    activeNormalizedWord={selectedWord}
+                    onSelectionChange={handleSelectionChange}
+                    activeSelectionNormalized={selectedText}
                     translatedWord={translatedWord}
                     isTranslating={isTranslatingWord}
                   />

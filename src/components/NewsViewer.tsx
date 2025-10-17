@@ -1,12 +1,13 @@
-import { ReactNode, useCallback, useEffect, useState } from "react";
+import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import { NewsData } from "@/lib/api";
 
 interface NewsViewerProps {
   data: NewsData;
   fontSize: string;
   fontWeight: string;
-  onWordClick?: (word: string | null) => void;
-  activeNormalizedWord?: string | null;
+  onSelectionChange?: (text: string | null) => void;
+  activeSelectionNormalized?: string | null;
   translatedWord?: string | null;
   isTranslating?: boolean;
 }
@@ -17,43 +18,170 @@ const normalizeTokenForTranslation = (token: string) =>
     .replace(/[^\p{L}\p{N}'-]+$/u, "")
     .trim();
 
+type TokenRecord = {
+  key: string;
+  token: string;
+  normalized: string;
+  leading: string;
+  trailing: string;
+};
+
+const primaryPointerTypes = new Set(["mouse", "touch", "pen"]);
+
 const NewsViewer = ({
   data,
   fontSize,
   fontWeight,
-  onWordClick,
-  activeNormalizedWord,
+  onSelectionChange,
+  activeSelectionNormalized,
   translatedWord,
   isTranslating
 }: NewsViewerProps) => {
-  const [selectedWordKey, setSelectedWordKey] = useState<string | null>(null);
+  const tokenRegistryRef = useRef<{ tokens: TokenRecord[] }>({ tokens: [] });
+  const [selectionKeys, setSelectionKeys] = useState<string[]>([]);
+  const [selectionNormalized, setSelectionNormalized] = useState<string | null>(null);
+  const anchorKeyRef = useRef<string | null>(null);
+  const pointerSelectingRef = useRef(false);
+  const lastSelectionRef = useRef<{ keys: string[]; normalized: string | null } | null>(null);
 
-  const handleWordSelect = useCallback(
-    (wordKey: string, token: string) => {
-      if (selectedWordKey === wordKey) {
-        setSelectedWordKey(null);
-        onWordClick?.(null);
+  const selectionKeySet = useMemo(() => new Set(selectionKeys), [selectionKeys]);
+  const firstSelectionKey = selectionKeys[0] ?? null;
+  const isSingleSelection = selectionKeys.length === 1;
+
+  tokenRegistryRef.current.tokens = [];
+
+  const applySelection = useCallback((startKey: string, endKey: string) => {
+    const tokens = tokenRegistryRef.current.tokens;
+
+    if (!tokens.length) {
+      return null;
+    }
+
+    const startIndex = tokens.findIndex((item) => item.key === startKey);
+    const endIndex = tokens.findIndex((item) => item.key === endKey);
+
+    if (startIndex === -1 || endIndex === -1) {
+      return null;
+    }
+
+    const [from, to] = startIndex <= endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
+    const slice = tokens.slice(from, to + 1);
+    const keys = slice.map((item) => item.key);
+
+    const normalizedJoined = slice
+      .map((item) => item.normalized)
+      .filter(Boolean)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const normalizedValue = normalizedJoined.length > 0 ? normalizedJoined : null;
+
+    setSelectionKeys(keys);
+    setSelectionNormalized(normalizedValue);
+    lastSelectionRef.current = {
+      keys,
+      normalized: normalizedValue
+    };
+
+    return lastSelectionRef.current;
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectionKeys([]);
+    setSelectionNormalized(null);
+    lastSelectionRef.current = null;
+    pointerSelectingRef.current = false;
+    anchorKeyRef.current = null;
+    onSelectionChange?.(null);
+  }, [onSelectionChange]);
+
+  const finalizeSelection = useCallback(() => {
+    if (!pointerSelectingRef.current) {
+      return;
+    }
+
+    pointerSelectingRef.current = false;
+    anchorKeyRef.current = null;
+    onSelectionChange?.(lastSelectionRef.current?.normalized ?? null);
+  }, [onSelectionChange]);
+
+  useEffect(() => {
+    const handlePointerUp = () => finalizeSelection();
+
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+
+    return () => {
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+    };
+  }, [finalizeSelection]);
+
+  useEffect(() => {
+    clearSelection();
+  }, [clearSelection, data]);
+
+  const handlePointerDown = useCallback(
+    (tokenKey: string) => (event: React.PointerEvent<HTMLSpanElement>) => {
+      if (!primaryPointerTypes.has(event.pointerType)) {
         return;
       }
 
-      setSelectedWordKey(wordKey);
+      if (event.pointerType === "mouse" && event.button !== 0) {
+        return;
+      }
 
-      const normalized = normalizeTokenForTranslation(token);
+      event.preventDefault();
+      event.stopPropagation();
+      event.currentTarget.focus();
 
-      if (normalized) {
-        onWordClick?.(normalized);
-      } else {
-        onWordClick?.(null);
+      if (!event.shiftKey && selectionKeys.length === 1 && selectionKeys[0] === tokenKey) {
+        clearSelection();
+        return;
+      }
+
+      const anchorKey = event.shiftKey && selectionKeys.length > 0 ? selectionKeys[0] : tokenKey;
+
+      anchorKeyRef.current = anchorKey;
+      pointerSelectingRef.current = true;
+
+      const result = applySelection(anchorKey, tokenKey);
+
+      if (!result) {
+        pointerSelectingRef.current = false;
+        anchorKeyRef.current = null;
       }
     },
-    [onWordClick, selectedWordKey]
+    [applySelection, clearSelection, selectionKeys]
   );
 
-  useEffect(() => {
-    if (!activeNormalizedWord) {
-      setSelectedWordKey(null);
-    }
-  }, [activeNormalizedWord]);
+  const handlePointerEnter = useCallback(
+    (tokenKey: string) => () => {
+      if (!pointerSelectingRef.current || !anchorKeyRef.current) {
+        return;
+      }
+
+      applySelection(anchorKeyRef.current, tokenKey);
+    },
+    [applySelection]
+  );
+
+  const handleKeySelection = useCallback(
+    (tokenKey: string) => {
+      const result = applySelection(tokenKey, tokenKey);
+
+      pointerSelectingRef.current = false;
+      anchorKeyRef.current = null;
+
+      if (result) {
+        onSelectionChange?.(result.normalized);
+      } else {
+        onSelectionChange?.(null);
+      }
+    },
+    [applySelection, onSelectionChange]
+  );
 
   const renderInteractiveText = useCallback(
     (text: string, keyPrefix: string): ReactNode[] => {
@@ -69,17 +197,12 @@ const NewsViewer = ({
             const nodes: ReactNode[] = [];
 
             if (segIndex > 0) {
-              nodes.push(
-                <br key={`${keyPrefix}-br-${index}-${segIndex}`} />
-              );
+              nodes.push(<br key={`${keyPrefix}-br-${index}-${segIndex}`} />);
             }
 
             if (segment) {
               nodes.push(
-                <span
-                  key={`${keyPrefix}-space-${index}-${segIndex}`}
-                  style={{ whiteSpace: "pre" }}
-                >
+                <span key={`${keyPrefix}-space-${index}-${segIndex}`} className="interactive-word__gap">
                   {segment}
                 </span>
               );
@@ -90,49 +213,81 @@ const NewsViewer = ({
         }
 
         const tokenKey = `${keyPrefix}-word-${index}`;
-        const isActive = selectedWordKey === tokenKey;
         const leadingBoundary = token.match(/^[^\p{L}\p{N}'-]+/u)?.[0] ?? "";
         const trailingBoundary = token.match(/[^\p{L}\p{N}'-]+$/u)?.[0] ?? "";
         const normalizedToken = normalizeTokenForTranslation(token);
-        const hasActiveTranslation =
-          isActive &&
-          Boolean(normalizedToken) &&
-          activeNormalizedWord === normalizedToken &&
+
+        tokenRegistryRef.current.tokens.push({
+          key: tokenKey,
+          token,
+          normalized: normalizedToken,
+          leading: leadingBoundary,
+          trailing: trailingBoundary
+        });
+
+        const isSelected = selectionKeySet.has(tokenKey);
+        const isSelectionStart = isSelected && firstSelectionKey === tokenKey;
+        const showInlineTranslation =
+          isSelected &&
+          isSelectionStart &&
+          isSingleSelection &&
           Boolean(translatedWord) &&
-          !isTranslating;
-        const translatedDisplay = hasActiveTranslation
+          !isTranslating &&
+          selectionNormalized &&
+          activeSelectionNormalized &&
+          activeSelectionNormalized === selectionNormalized;
+
+        const displayValue = showInlineTranslation
           ? `${leadingBoundary}${translatedWord}${trailingBoundary}`
-          : null;
+          : token;
 
         return (
           <span
             key={tokenKey}
             role="button"
             tabIndex={0}
-            aria-pressed={isActive}
-            className={`interactive-word${isActive ? " interactive-word--active" : ""}${hasActiveTranslation ? " interactive-word--translated" : ""}${
-              isActive && isTranslating ? " interactive-word--loading" : ""
-            }`}
-            onClick={() => handleWordSelect(tokenKey, token)}
+            aria-pressed={isSelected}
+            className={`interactive-word${isSelected ? " interactive-word--active" : ""}${
+              showInlineTranslation ? " interactive-word--translated" : ""
+            }${isSelected && isTranslating ? " interactive-word--loading" : ""}`}
+            onPointerDown={handlePointerDown(tokenKey)}
+            onPointerEnter={handlePointerEnter(tokenKey)}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
-                handleWordSelect(tokenKey, token);
+                handleKeySelection(tokenKey);
+              }
+
+              if (event.key === "Escape") {
+                event.preventDefault();
+                clearSelection();
               }
             }}
           >
             <span
               className="interactive-word__label"
               data-original={token}
-              data-translation-active={hasActiveTranslation ? "true" : undefined}
+              data-translation-active={showInlineTranslation ? "true" : undefined}
             >
-              {translatedDisplay ?? token}
+              {displayValue}
             </span>
           </span>
         );
       });
     },
-    [activeNormalizedWord, handleWordSelect, isTranslating, selectedWordKey, translatedWord]
+    [
+      activeSelectionNormalized,
+      clearSelection,
+      handleKeySelection,
+      handlePointerDown,
+      handlePointerEnter,
+      isSingleSelection,
+      isTranslating,
+      selectionKeySet,
+      selectionNormalized,
+      translatedWord,
+      firstSelectionKey
+    ]
   );
 
   return (
@@ -169,7 +324,10 @@ const NewsViewer = ({
         )}
         <section className="grid gap-11">
           {(data.sections || []).map((section, index) => (
-            <article key={index} className="relative border-4 border-foreground bg-gradient-to-br from-foreground/5 to-transparent p-9">
+            <article
+              key={index}
+              className="relative border-4 border-foreground bg-gradient-to-br from-foreground/5 to-transparent p-9"
+            >
               <div className="pointer-events-none absolute inset-3 border-2 border-foreground/10"></div>
               {section.heading ? (
                 <h2 style={{ fontSize: "1.75em" }}>

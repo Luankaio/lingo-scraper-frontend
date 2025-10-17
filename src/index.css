@@ -156,6 +156,7 @@
     min-height: 100%;
     padding: 4rem 3rem 5rem;
     box-sizing: border-box;
+    user-select: none;
   }
 
   .news-frame::after {
