@@ -1,15 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Globe } from "lucide-react";
+import { Check, ChevronDown, Globe } from "lucide-react";
 
 import Logo from "@/components/Logo";
 import NewsViewer from "@/components/NewsViewer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { extractWords, NewsData, scrapeUrl, updateSpaceContent, upsertSpace } from "@/lib/api";
+import { extractWords, NewsData, scrapeUrl, translateWord, updateSpaceContent, upsertSpace } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import type { GoogleTranslateLanguage } from "@/lib/googleTranslateLanguages";
+import {
+  DEFAULT_GOOGLE_TRANSLATE_LANGUAGE,
+  GOOGLE_TRANSLATE_LANGUAGES,
+  findGoogleTranslateLanguage
+} from "@/lib/googleTranslateLanguages";
 
 const STATUS_LABELS: Record<SaveStatus, string> = {
   idle: "",
@@ -192,6 +198,20 @@ const Space = () => {
   const [isBold, setIsBold] = useState(false);
   const [showLinks, setShowLinks] = useState(true);
   const [scrapeHistory, setScrapeHistory] = useState<string[]>([]);
+  const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
+  const [languageQuery, setLanguageQuery] = useState("");
+  const [selectedLanguageCode, setSelectedLanguageCode] = useState<string>(() => {
+    const fallback = findGoogleTranslateLanguage(DEFAULT_GOOGLE_TRANSLATE_LANGUAGE);
+    return fallback?.code ?? GOOGLE_TRANSLATE_LANGUAGES[0].code;
+  });
+  const languageMenuRef = useRef<HTMLDivElement | null>(null);
+  const translationControllerRef = useRef<AbortController | null>(null);
+  const [selectedWordInfo, setSelectedWordInfo] = useState<{ word: string; nonce: number } | null>(null);
+  const [translatedWord, setTranslatedWord] = useState<string | null>(null);
+  const [detectedLanguage, setDetectedLanguage] = useState<string | null>(null);
+  const [isTranslatingWord, setIsTranslatingWord] = useState(false);
+  const [translationError, setTranslationError] = useState<string | null>(null);
+  const selectedWord = selectedWordInfo?.word ?? null;
 
   useEffect(() => {
     if (!name) {
@@ -286,13 +306,166 @@ const Space = () => {
     return () => window.clearTimeout(handle);
   }, [draft, mutation, spaceQuery.data]);
 
-  const shareLink = useMemo(() => {
-    if (typeof window === "undefined" || !name) {
-      return "";
+  const selectedLanguage = useMemo<GoogleTranslateLanguage>(() => {
+    return (
+      findGoogleTranslateLanguage(selectedLanguageCode) ?? GOOGLE_TRANSLATE_LANGUAGES[0]
+    );
+  }, [selectedLanguageCode]);
+
+  const detectedLanguageLabel = useMemo(() => {
+    if (!detectedLanguage) {
+      return null;
     }
 
-    return `${window.location.origin}/${name}`;
-  }, [name]);
+    return findGoogleTranslateLanguage(detectedLanguage)?.name ?? detectedLanguage.toUpperCase();
+  }, [detectedLanguage]);
+
+  const filteredLanguages = useMemo(() => {
+    const query = languageQuery.trim().toLowerCase();
+
+    if (!query) {
+      return GOOGLE_TRANSLATE_LANGUAGES;
+    }
+
+    return GOOGLE_TRANSLATE_LANGUAGES.filter((language) => {
+      const codeMatch = language.code.toLowerCase().includes(query);
+      const nameMatch = language.name.toLowerCase().includes(query);
+      const nativeMatch = language.nativeName?.toLowerCase().includes(query) ?? false;
+      return codeMatch || nameMatch || nativeMatch;
+    });
+  }, [languageQuery]);
+
+  useEffect(() => {
+    if (!isLanguageMenuOpen) {
+      setLanguageQuery("");
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      if (!languageMenuRef.current) {
+        return;
+      }
+
+      if (!languageMenuRef.current.contains(event.target as Node)) {
+        setIsLanguageMenuOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsLanguageMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isLanguageMenuOpen]);
+
+  const handleLanguageSelect = useCallback((language: GoogleTranslateLanguage) => {
+    setSelectedLanguageCode(language.code);
+    setLanguageQuery("");
+    setIsLanguageMenuOpen(false);
+  }, []);
+
+  const handleWordTranslate = useCallback((word: string | null) => {
+    const normalized = word?.trim() ?? "";
+
+    if (!normalized) {
+      translationControllerRef.current?.abort();
+      translationControllerRef.current = null;
+      setSelectedWordInfo(null);
+      setTranslatedWord(null);
+      setDetectedLanguage(null);
+      setTranslationError(null);
+      setIsTranslatingWord(false);
+      return;
+    }
+
+    setTranslatedWord(null);
+    setDetectedLanguage(null);
+    setTranslationError(null);
+    setSelectedWordInfo({ word: normalized, nonce: Date.now() });
+  }, []);
+
+  useEffect(() => {
+    const entry = selectedWordInfo;
+
+    if (!entry) {
+      translationControllerRef.current?.abort();
+      translationControllerRef.current = null;
+      setIsTranslatingWord(false);
+      setTranslatedWord(null);
+      setDetectedLanguage(null);
+      setTranslationError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    translationControllerRef.current?.abort();
+    translationControllerRef.current = controller;
+    setIsTranslatingWord(true);
+    setTranslationError(null);
+    setTranslatedWord(null);
+
+    translateWord({
+      text: entry.word,
+      targetLanguage: selectedLanguage.code,
+      signal: controller.signal
+    })
+      .then((result) => {
+        setTranslatedWord(result.translatedText);
+        setDetectedLanguage(result.detectedLanguage ?? null);
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+
+        setTranslationError(error instanceof Error ? error.message : "Não foi possível traduzir.");
+        setTranslatedWord(null);
+        setDetectedLanguage(null);
+      })
+      .finally(() => {
+        if (translationControllerRef.current === controller) {
+          translationControllerRef.current = null;
+          setIsTranslatingWord(false);
+        }
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [selectedWordInfo, selectedLanguage.code]);
+
+  useEffect(() => {
+    if (!selectedWordInfo) {
+      return;
+    }
+
+    setTranslatedWord(null);
+    setTranslationError(null);
+  }, [selectedLanguage.code, selectedWordInfo]);
+
+  useEffect(() => {
+    translationControllerRef.current?.abort();
+    translationControllerRef.current = null;
+    setSelectedWordInfo(null);
+    setTranslatedWord(null);
+    setDetectedLanguage(null);
+    setTranslationError(null);
+    setIsTranslatingWord(false);
+  }, [scrapedData]);
+
+  useEffect(() => () => {
+    translationControllerRef.current?.abort();
+  }, []);
 
   const savedLinks = useMemo(() => {
     const pattern = /(https?:\/\/[^\s]+)/g;
@@ -539,8 +712,8 @@ const Space = () => {
             </div>
           ) : (
             <div className="flex h-full flex-col gap-6 overflow-hidden">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-4">
+              <div className="flex flex-col gap-4 pt-6 sm:grid sm:grid-cols-[auto,minmax(0,1fr),auto] sm:items-center sm:gap-6">
+                <div className="flex items-center gap-4 pl-3 sm:pl-6">
                   <label className="text-sm" htmlFor="font-size-control">Font size</label>
                   <div className="flex items-center">
                     <button onClick={() => setFontSizeMultiplier(prev => Math.max(0.5, prev - 0.1))} className="sketch-input px-2 py-1 rounded-l" aria-label="Decrease font size">-</button>
@@ -560,35 +733,141 @@ const Space = () => {
                     Bold
                   </button>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="sketch-input">
-                    <Input
-                      readOnly
-                      value={shareLink}
-                      onFocus={(event) => event.currentTarget.select()}
-                      className="h-12 cursor-copy border-0 bg-transparent text-center text-base shadow-none"
-                    />
+                <div className="flex flex-col items-center gap-1 rounded-2xl border-4 border-foreground/20 bg-background/80 px-5 py-3 text-center shadow-[8px_8px_0_0_rgba(0,0,0,0.25)] sm:mx-auto sm:max-w-xl sm:w-full sm:justify-self-center">
+                  <span className="text-xs uppercase tracking-[0.3em] text-foreground/60">
+                    Tradução ({selectedLanguage.name})
+                  </span>
+                  {selectedWord ? (
+                    <>
+                      {isTranslatingWord ? (
+                        <span className="text-sm text-foreground/70">Traduzindo…</span>
+                      ) : translationError ? (
+                        <span className="text-sm text-red-600">{translationError}</span>
+                      ) : translatedWord ? (
+                        <span className="text-xl font-semibold text-foreground">{translatedWord}</span>
+                      ) : (
+                        <span className="text-sm text-foreground/60">Nenhum resultado.</span>
+                      )}
+                      <span className="text-xs text-foreground/60">
+                        Palavra: <span className="font-medium text-foreground">{selectedWord}</span>
+                        {detectedLanguageLabel ? (
+                          <span className="ml-1 uppercase tracking-wide text-foreground/50">
+                            ({detectedLanguageLabel})
+                          </span>
+                        ) : null}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-sm text-foreground/60">
+                      Clique em qualquer palavra para traduzir para {selectedLanguage.name}.
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center justify-end pr-3 sm:pr-6">
+                  <div ref={languageMenuRef} className="relative">
+                    <button
+                      type="button"
+                      className={cn(
+                        "sketch-input inline-flex min-h-[3rem] items-center gap-2 rounded-xl px-4 py-2 text-base transition-transform duration-200 ease-out",
+                        isLanguageMenuOpen ? "bg-foreground text-background" : "hover:-translate-y-0.5"
+                      )}
+                      onClick={() => setIsLanguageMenuOpen((previous) => !previous)}
+                      aria-haspopup="listbox"
+                      aria-expanded={isLanguageMenuOpen}
+                      aria-controls="language-selector-menu"
+                    >
+                      <Globe className="h-4 w-4" />
+                      <span className="whitespace-nowrap font-medium">{selectedLanguage.name}</span>
+                      <ChevronDown
+                        className={cn(
+                          "h-4 w-4 transition-transform duration-200",
+                          isLanguageMenuOpen ? "-scale-y-100" : undefined
+                        )}
+                      />
+                    </button>
+
+                    {isLanguageMenuOpen ? (
+                      <div className="absolute right-0 z-30 mt-3 w-[19rem] origin-top-right rounded-2xl border-4 border-foreground bg-[#fffef8] shadow-[16px_18px_0_-6px_#111,16px_18px_0_0_#fffef8]">
+                        <div className="border-b border-foreground/20 p-2">
+                          <Input
+                            placeholder="Buscar idioma…"
+                            value={languageQuery}
+                            onChange={(event) => setLanguageQuery(event.target.value)}
+                            className="h-10 border-2 border-foreground/40 bg-background text-base shadow-none focus-visible:ring-0"
+                            autoFocus
+                          />
+                        </div>
+                        <ul
+                          id="language-selector-menu"
+                          role="listbox"
+                          aria-label="Google Translate languages"
+                          className="overflow-y-auto px-2 py-2 pr-3"
+                          style={{ maxHeight: "12.5rem" }}
+                        >
+                          {filteredLanguages.length > 0 ? (
+                            filteredLanguages.map((language) => {
+                              const isActive = selectedLanguage.code === language.code;
+                              return (
+                                <li key={language.code} className="py-1">
+                                  <button
+                                    type="button"
+                                    role="option"
+                                    aria-selected={isActive}
+                                    onClick={() => handleLanguageSelect(language)}
+                                    className={cn(
+                                      "flex w-full flex-col gap-1 rounded-xl px-3 py-2 text-left transition-all duration-150 ease-out",
+                                      isActive
+                                        ? "bg-foreground text-background shadow-[8px_8px_0_0_#111]"
+                                        : "hover:-translate-y-0.5 hover:bg-foreground/10"
+                                    )}
+                                  >
+                                    <span className="flex items-center justify-between gap-3">
+                                      <span className="flex items-center gap-2 font-medium">
+                                        {isActive ? <Check className="h-4 w-4" /> : null}
+                                        {language.name}
+                                      </span>
+                                      <span className={cn(
+                                        "text-xs uppercase tracking-wide",
+                                        isActive ? "text-background/70" : "text-foreground/60"
+                                      )}>
+                                        {language.code}
+                                      </span>
+                                    </span>
+                                    {language.nativeName ? (
+                                      <span
+                                        className={cn(
+                                          "text-xs",
+                                          isActive ? "text-background/70" : "text-foreground/60"
+                                        )}
+                                      >
+                                        {language.nativeName}
+                                      </span>
+                                    ) : null}
+                                  </button>
+                                </li>
+                              );
+                            })
+                          ) : (
+                            <li className="px-3 py-4 text-sm text-foreground/60">Nenhum idioma encontrado</li>
+                          )}
+                        </ul>
+                      </div>
+                    ) : null}
                   </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="px-6"
-                    onClick={() => {
-                      if (!shareLink) {
-                        return;
-                      }
-                      void navigator.clipboard?.writeText(shareLink);
-                      toast.success("Link copied to clipboard");
-                    }}
-                  >
-                    copy link
-                  </Button>
                 </div>
               </div>
 
               <div className="flex flex-1 flex-col overflow-hidden">
                 {scrapedData ? (
-                  <NewsViewer data={scrapedData} fontSize={`${fontSizeMultiplier}em`} fontWeight={isBold ? 'bold' : 'normal'} />
+                  <NewsViewer
+                    data={scrapedData}
+                    fontSize={`${fontSizeMultiplier}em`}
+                    fontWeight={isBold ? 'bold' : 'normal'}
+                    onWordClick={handleWordTranslate}
+                    activeNormalizedWord={selectedWord}
+                    translatedWord={translatedWord}
+                    isTranslating={isTranslatingWord}
+                  />
                 ) : (
                   <div className="flex flex-1 items-center justify-center">
                     <p className="text-lg text-foreground/70">Enter a URL in the header to start scraping and view the content here.</p>

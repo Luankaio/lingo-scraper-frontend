@@ -1,18 +1,59 @@
-import { ReactNode, useCallback, useState } from "react";
+import { ReactNode, useCallback, useEffect, useState } from "react";
 import { NewsData } from "@/lib/api";
 
 interface NewsViewerProps {
   data: NewsData;
   fontSize: string;
   fontWeight: string;
+  onWordClick?: (word: string | null) => void;
+  activeNormalizedWord?: string | null;
+  translatedWord?: string | null;
+  isTranslating?: boolean;
 }
 
-const NewsViewer = ({ data, fontSize, fontWeight }: NewsViewerProps) => {
-  const [selectedWord, setSelectedWord] = useState<string | null>(null);
+const normalizeTokenForTranslation = (token: string) =>
+  token
+    .replace(/^[^\p{L}\p{N}'-]+/u, "")
+    .replace(/[^\p{L}\p{N}'-]+$/u, "")
+    .trim();
 
-  const handleWordToggle = useCallback((wordKey: string) => {
-    setSelectedWord((previous) => (previous === wordKey ? null : wordKey));
-  }, []);
+const NewsViewer = ({
+  data,
+  fontSize,
+  fontWeight,
+  onWordClick,
+  activeNormalizedWord,
+  translatedWord,
+  isTranslating
+}: NewsViewerProps) => {
+  const [selectedWordKey, setSelectedWordKey] = useState<string | null>(null);
+
+  const handleWordSelect = useCallback(
+    (wordKey: string, token: string) => {
+      if (selectedWordKey === wordKey) {
+        setSelectedWordKey(null);
+        onWordClick?.(null);
+        return;
+      }
+
+      setSelectedWordKey(wordKey);
+
+      const normalized = normalizeTokenForTranslation(token);
+
+      if (normalized) {
+        onWordClick?.(normalized);
+      } else {
+        onWordClick?.(null);
+      }
+    },
+    [onWordClick, selectedWordKey]
+  );
+
+  useEffect(() => {
+    if (!activeNormalizedWord) {
+      setSelectedWordKey(null);
+    }
+  }, [activeNormalizedWord]);
 
   const renderInteractiveText = useCallback(
     (text: string, keyPrefix: string): ReactNode[] => {
@@ -49,7 +90,19 @@ const NewsViewer = ({ data, fontSize, fontWeight }: NewsViewerProps) => {
         }
 
         const tokenKey = `${keyPrefix}-word-${index}`;
-        const isActive = selectedWord === tokenKey;
+        const isActive = selectedWordKey === tokenKey;
+        const leadingBoundary = token.match(/^[^\p{L}\p{N}'-]+/u)?.[0] ?? "";
+        const trailingBoundary = token.match(/[^\p{L}\p{N}'-]+$/u)?.[0] ?? "";
+        const normalizedToken = normalizeTokenForTranslation(token);
+        const hasActiveTranslation =
+          isActive &&
+          Boolean(normalizedToken) &&
+          activeNormalizedWord === normalizedToken &&
+          Boolean(translatedWord) &&
+          !isTranslating;
+        const translatedDisplay = hasActiveTranslation
+          ? `${leadingBoundary}${translatedWord}${trailingBoundary}`
+          : null;
 
         return (
           <span
@@ -57,21 +110,29 @@ const NewsViewer = ({ data, fontSize, fontWeight }: NewsViewerProps) => {
             role="button"
             tabIndex={0}
             aria-pressed={isActive}
-            className={`interactive-word ${isActive ? "interactive-word--active" : ""}`}
-            onClick={() => handleWordToggle(tokenKey)}
+            className={`interactive-word${isActive ? " interactive-word--active" : ""}${hasActiveTranslation ? " interactive-word--translated" : ""}${
+              isActive && isTranslating ? " interactive-word--loading" : ""
+            }`}
+            onClick={() => handleWordSelect(tokenKey, token)}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
-                handleWordToggle(tokenKey);
+                handleWordSelect(tokenKey, token);
               }
             }}
           >
-            <span className="interactive-word__label">{token}</span>
+            <span
+              className="interactive-word__label"
+              data-original={token}
+              data-translation-active={hasActiveTranslation ? "true" : undefined}
+            >
+              {translatedDisplay ?? token}
+            </span>
           </span>
         );
       });
     },
-    [handleWordToggle, selectedWord]
+    [activeNormalizedWord, handleWordSelect, isTranslating, selectedWordKey, translatedWord]
   );
 
   return (

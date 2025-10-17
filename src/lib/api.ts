@@ -100,6 +100,66 @@ export const scrapeUrl = async (params: { url: string; space_name: string }): Pr
   return (await response.json()) as NewsData;
 };
 
+export interface TranslateWordParams {
+  text: string;
+  targetLanguage: string;
+  signal?: AbortSignal;
+}
+
+export interface TranslateWordResult {
+  translatedText: string;
+  detectedLanguage?: string;
+}
+
+const buildGoogleTranslateUrl = (text: string, targetLanguage: string): string => {
+  const url = new URL("https://translate.googleapis.com/translate_a/single");
+  url.searchParams.set("client", "gtx");
+  url.searchParams.set("sl", "auto");
+  url.searchParams.set("tl", targetLanguage);
+  url.searchParams.set("dt", "t");
+  url.searchParams.set("q", text);
+  return url.toString();
+};
+
+export const translateWord = async ({
+  text,
+  targetLanguage,
+  signal
+}: TranslateWordParams): Promise<TranslateWordResult> => {
+  const trimmed = text.trim();
+
+  if (!trimmed) {
+    return { translatedText: "" };
+  }
+
+  const response = await fetch(buildGoogleTranslateUrl(trimmed, targetLanguage), {
+    signal
+  });
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => "");
+    throw new Error(message || `Falha ao traduzir com status ${response.status}`);
+  }
+
+  const data = (await response.json()) as unknown;
+  const sentences = Array.isArray(data) && Array.isArray((data as unknown[])[0])
+    ? ((data as unknown[])[0] as unknown[])
+    : [];
+
+  const translatedText = sentences
+    .map((segment) => (Array.isArray(segment) && typeof segment[0] === "string" ? segment[0] : ""))
+    .join("");
+
+  const detectedLanguage = Array.isArray(data) && typeof (data as unknown[])[2] === "string"
+    ? ((data as unknown[])[2] as string)
+    : undefined;
+
+  return {
+    translatedText: translatedText || trimmed,
+    detectedLanguage
+  };
+};
+
 export const extractWords = (text: string, limit = 500): string[] => {
   const matches = text
     .toLowerCase()
