@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Check, ChevronDown, Globe } from "lucide-react";
+import { Check, ChevronDown, Globe, Volume2 } from "lucide-react";
 
 import Logo from "@/components/Logo";
 import NewsViewer from "@/components/NewsViewer";
@@ -95,7 +95,6 @@ const loadScrapeHistory = (space: string): string[] => {
     return [];
   }
 };
-
 const saveScrapeHistory = (space: string, history: string[]) => {
   if (typeof window === "undefined") {
     return;
@@ -226,7 +225,20 @@ const Space = () => {
   const [detectedLanguage, setDetectedLanguage] = useState<string | null>(null);
   const [isTranslatingWord, setIsTranslatingWord] = useState(false);
   const [translationError, setTranslationError] = useState<string | null>(null);
+  const pronunciationAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [isPlayingPronunciation, setIsPlayingPronunciation] = useState(false);
+  const [pronunciationError, setPronunciationError] = useState<string | null>(null);
   const selectedText = selectedTextInfo?.original ?? null;
+
+  const cancelSpeechSynthesis = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+  }, []);
 
   useEffect(() => {
     if (!name) {
@@ -393,6 +405,12 @@ const Space = () => {
     const original = (text ?? "").replace(/\s+/g, " ").trim();
     const normalized = original ? buildNormalizedSelection(original) : "";
 
+    pronunciationAudioRef.current?.pause();
+    pronunciationAudioRef.current = null;
+    setIsPlayingPronunciation(false);
+    setPronunciationError(null);
+    cancelSpeechSynthesis();
+
     if (!original) {
       translationControllerRef.current?.abort();
       translationControllerRef.current = null;
@@ -408,7 +426,97 @@ const Space = () => {
     setDetectedLanguage(null);
     setTranslationError(null);
     setSelectedTextInfo({ original, normalized, nonce: Date.now() });
-  }, []);
+  }, [cancelSpeechSynthesis]);
+
+  const speakWithBrowser = useCallback(
+    (text: string, languageCode: string) => {
+      if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+        setPronunciationError("Reprodução de áudio não disponível neste navegador.");
+        setIsPlayingPronunciation(false);
+        return;
+      }
+
+      cancelSpeechSynthesis();
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = languageCode.replace("_", "-");
+      utterance.rate = 0.95;
+      utterance.onerror = () => {
+        setPronunciationError("Não foi possível reproduzir o áudio.");
+        setIsPlayingPronunciation(false);
+      };
+      utterance.onend = () => {
+        setIsPlayingPronunciation(false);
+      };
+
+      try {
+        setIsPlayingPronunciation(true);
+        window.speechSynthesis.speak(utterance);
+      } catch {
+        setPronunciationError("Não foi possível reproduzir o áudio.");
+        setIsPlayingPronunciation(false);
+      }
+    },
+    [cancelSpeechSynthesis]
+  );
+
+  const playPronunciation = useCallback(async () => {
+    const text = selectedTextInfo?.original.trim();
+
+    if (!text) {
+      return;
+    }
+
+    const sanitized = text.length > 200 ? text.slice(0, 200) : text;
+
+    pronunciationAudioRef.current?.pause();
+    cancelSpeechSynthesis();
+
+    const languageCode = (detectedLanguage ?? selectedLanguage.code).toLowerCase();
+    const query = encodeURIComponent(sanitized);
+    const audioUrl = `https://translate.googleapis.com/translate_tts?ie=UTF-8&client=tw-ob&q=${query}&tl=${languageCode}&textlen=${sanitized.length}`;
+
+    setPronunciationError(text.length > 200 ? "Texto muito longo para pronúncia completa." : null);
+    setIsPlayingPronunciation(true);
+
+    try {
+      const response = await fetch(audioUrl, {
+        headers: {
+          "User-Agent": window.navigator.userAgent,
+          accept: "audio/mpeg"
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const audio = new Audio(objectUrl);
+      pronunciationAudioRef.current = audio;
+
+      audio.onended = () => {
+        setIsPlayingPronunciation(false);
+        pronunciationAudioRef.current = null;
+        URL.revokeObjectURL(objectUrl);
+      };
+
+      audio.onpause = () => {
+        setIsPlayingPronunciation(false);
+      };
+
+      audio.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        pronunciationAudioRef.current = null;
+        speakWithBrowser(sanitized, languageCode);
+      };
+
+      await audio.play();
+    } catch {
+      speakWithBrowser(sanitized, languageCode);
+    }
+  }, [cancelSpeechSynthesis, detectedLanguage, selectedLanguage.code, selectedTextInfo, speakWithBrowser]);
 
   useEffect(() => {
   const entry = selectedTextInfo;
@@ -477,10 +585,18 @@ const Space = () => {
     setDetectedLanguage(null);
     setTranslationError(null);
     setIsTranslatingWord(false);
-  }, [scrapedData]);
+    pronunciationAudioRef.current?.pause();
+    pronunciationAudioRef.current = null;
+    setIsPlayingPronunciation(false);
+    setPronunciationError(null);
+    cancelSpeechSynthesis();
+  }, [cancelSpeechSynthesis, scrapedData]);
 
   useEffect(() => () => {
     translationControllerRef.current?.abort();
+    pronunciationAudioRef.current?.pause();
+    pronunciationAudioRef.current = null;
+    cancelSpeechSynthesis();
   }, []);
 
   const savedLinks = useMemo(() => {
@@ -749,12 +865,34 @@ const Space = () => {
                     Bold
                   </button>
                 </div>
-                <div className="flex h-[4.875rem] flex-col items-center justify-center gap-1 overflow-y-auto rounded-2xl border-4 border-foreground/20 bg-background/80 px-5 py-3 text-center shadow-[8px_8px_0_0_rgba(0,0,0,0.25)] sm:mx-auto sm:h-[5.5rem] sm:w-full sm:max-w-xl sm:justify-self-center">
-                  <span className="text-xs uppercase tracking-[0.3em] text-foreground/60">
-                    Tradução ({selectedLanguage.name})
-                  </span>
+                <div className="flex h-[8rem] w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border-4 border-foreground/20 bg-background/80 px-5 py-3 text-center shadow-[8px_8px_0_0_rgba(0,0,0,0.25)] sm:mx-auto sm:max-w-xl sm:justify-self-center">
                   {selectedText ? (
-                    <>
+                    <div className="flex h-full w-full flex-col items-center gap-2 overflow-y-auto">
+                      <div className="flex w-full items-center justify-center gap-2">
+                        <span
+                          className="max-w-[14rem] truncate text-lg font-semibold text-foreground sm:max-w-[18rem]"
+                          title={selectedText}
+                        >
+                          {selectedText}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={playPronunciation}
+                          disabled={isPlayingPronunciation}
+                          className={cn(
+                            "inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-foreground/40 text-foreground transition-all",
+                            isPlayingPronunciation
+                              ? "bg-foreground text-background"
+                              : "hover:-translate-y-0.5 hover:bg-foreground hover:text-background"
+                          )}
+                          aria-label="Ouvir pronúncia"
+                        >
+                          <Volume2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                      {pronunciationError ? (
+                        <span className="text-xs text-red-600">{pronunciationError}</span>
+                      ) : null}
                       {isTranslatingWord ? (
                         <span className="text-sm text-foreground/70">Traduzindo…</span>
                       ) : translationError ? (
@@ -764,19 +902,20 @@ const Space = () => {
                       ) : (
                         <span className="text-sm text-foreground/60">Nenhum resultado.</span>
                       )}
-                      <span className="text-xs text-foreground/60">
-                        Trecho: <span className="font-medium text-foreground">{selectedText}</span>
-                        {detectedLanguageLabel ? (
-                          <span className="ml-1 uppercase tracking-wide text-foreground/50">
-                            ({detectedLanguageLabel})
-                          </span>
-                        ) : null}
-                      </span>
-                    </>
+                      {detectedLanguageLabel ? (
+                        <span className="text-xs text-foreground/60" title={`${detectedLanguageLabel} → ${selectedLanguage.name}`}>
+                          <span className="font-medium text-foreground">{detectedLanguageLabel}</span>
+                          <span className="mx-1 text-foreground/40">•</span>
+                          <span className="font-medium text-foreground">{selectedLanguage.code.toUpperCase()}</span>
+                        </span>
+                      ) : null}
+                    </div>
                   ) : (
-                    <span className="text-sm text-foreground/60">
-                      Clique e arraste para selecionar palavras ou frases e traduzir para {selectedLanguage.name}.
-                    </span>
+                    <div className="flex h-full w-full items-center justify-center">
+                      <span className="text-sm text-foreground/60">
+                        Clique e arraste para selecionar palavras ou frases e traduzir para {selectedLanguage.name}.
+                      </span>
+                    </div>
                   )}
                 </div>
                 <div className="flex items-center justify-end pr-3 sm:pr-6">
