@@ -711,7 +711,7 @@ const Space = () => {
               </Button>
             </div>
           ) : (
-            <div className="flex h-full flex-col gap-6 overflow-hidden">
+              <div className="flex h-full flex-col gap-6 overflow-hidden">
               <div className="flex flex-col gap-4 pt-6 sm:grid sm:grid-cols-[auto,minmax(0,1fr),auto] sm:items-center sm:gap-6">
                 <div className="flex items-center gap-4 pl-3 sm:pl-6">
                   <label className="text-sm" htmlFor="font-size-control">Font size</label>
@@ -733,7 +733,7 @@ const Space = () => {
                     Bold
                   </button>
                 </div>
-                <div className="flex flex-col items-center gap-1 rounded-2xl border-4 border-foreground/20 bg-background/80 px-5 py-3 text-center shadow-[8px_8px_0_0_rgba(0,0,0,0.25)] sm:mx-auto sm:max-w-xl sm:w-full sm:justify-self-center">
+                <div className="flex h-[4.875rem] flex-col items-center justify-center gap-1 overflow-y-auto rounded-2xl border-4 border-foreground/20 bg-background/80 px-5 py-3 text-center shadow-[8px_8px_0_0_rgba(0,0,0,0.25)] sm:mx-auto sm:h-[5.5rem] sm:w-full sm:max-w-xl sm:justify-self-center">
                   <span className="text-xs uppercase tracking-[0.3em] text-foreground/60">
                     Tradução ({selectedLanguage.name})
                   </span>
