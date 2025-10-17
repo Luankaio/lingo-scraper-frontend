@@ -183,6 +183,19 @@ const setCachedScrape = (url: string, data: NewsData) => {
   saveScrapeCache(cache);
 };
 
+const normalizeSelectionSegment = (value: string) =>
+  value
+    .replace(/^[^\p{L}\p{N}'-]+/u, "")
+    .replace(/[^\p{L}\p{N}'-]+$/u, "")
+    .trim();
+
+const buildNormalizedSelection = (input: string) =>
+  input
+    .split(/\s+/)
+    .map((segment) => normalizeSelectionSegment(segment))
+    .filter(Boolean)
+    .join(" ");
+
 const Space = () => {
   const { spaceName } = useParams<Params>();
   const navigate = useNavigate();
@@ -206,12 +219,14 @@ const Space = () => {
   });
   const languageMenuRef = useRef<HTMLDivElement | null>(null);
   const translationControllerRef = useRef<AbortController | null>(null);
-  const [selectedTextInfo, setSelectedTextInfo] = useState<{ text: string; nonce: number } | null>(null);
+  const [selectedTextInfo, setSelectedTextInfo] = useState<
+    { original: string; normalized: string; nonce: number } | null
+  >(null);
   const [translatedWord, setTranslatedWord] = useState<string | null>(null);
   const [detectedLanguage, setDetectedLanguage] = useState<string | null>(null);
   const [isTranslatingWord, setIsTranslatingWord] = useState(false);
   const [translationError, setTranslationError] = useState<string | null>(null);
-  const selectedText = selectedTextInfo?.text ?? null;
+  const selectedText = selectedTextInfo?.original ?? null;
 
   useEffect(() => {
     if (!name) {
@@ -375,9 +390,10 @@ const Space = () => {
   }, []);
 
   const handleSelectionChange = useCallback((text: string | null) => {
-    const normalized = text?.trim() ?? "";
+    const original = (text ?? "").replace(/\s+/g, " ").trim();
+    const normalized = original ? buildNormalizedSelection(original) : "";
 
-    if (!normalized) {
+    if (!original) {
       translationControllerRef.current?.abort();
       translationControllerRef.current = null;
       setSelectedTextInfo(null);
@@ -391,7 +407,7 @@ const Space = () => {
     setTranslatedWord(null);
     setDetectedLanguage(null);
     setTranslationError(null);
-    setSelectedTextInfo({ text: normalized, nonce: Date.now() });
+    setSelectedTextInfo({ original, normalized, nonce: Date.now() });
   }, []);
 
   useEffect(() => {
@@ -415,7 +431,7 @@ const Space = () => {
     setTranslatedWord(null);
 
     translateWord({
-  text: entry.text,
+      text: entry.original,
       targetLanguage: selectedLanguage.code,
       signal: controller.signal
     })
@@ -864,7 +880,7 @@ const Space = () => {
                     fontSize={`${fontSizeMultiplier}em`}
                     fontWeight={isBold ? 'bold' : 'normal'}
                     onSelectionChange={handleSelectionChange}
-                    activeSelectionNormalized={selectedText}
+                    activeSelectionNormalized={selectedTextInfo?.normalized ?? null}
                     translatedWord={translatedWord}
                     isTranslating={isTranslatingWord}
                   />

@@ -12,21 +12,30 @@ interface NewsViewerProps {
   isTranslating?: boolean;
 }
 
-const normalizeTokenForTranslation = (token: string) =>
-  token
-    .replace(/^[^\p{L}\p{N}'-]+/u, "")
-    .replace(/[^\p{L}\p{N}'-]+$/u, "")
-    .trim();
-
 type TokenRecord = {
   key: string;
   token: string;
   normalized: string;
   leading: string;
   trailing: string;
+  separatorAfter: string;
 };
 
+const normalizeTokenForTranslation = (token: string) =>
+  token
+    .replace(/^[^\p{L}\p{N}'-]+/u, "")
+    .replace(/[^\p{L}\p{N}'-]+$/u, "")
+    .trim();
+
 const primaryPointerTypes = new Set(["mouse", "touch", "pen"]);
+
+type Section = NonNullable<NewsData["sections"]>[number];
+type SectionBlock = Section["blocks"][number];
+
+type SelectionSnapshot = {
+  keys: string[];
+  normalized: string | null;
+};
 
 const NewsViewer = ({
   data,
@@ -38,63 +47,84 @@ const NewsViewer = ({
   isTranslating
 }: NewsViewerProps) => {
   const tokenRegistryRef = useRef<{ tokens: TokenRecord[] }>({ tokens: [] });
-  const [selectionKeys, setSelectionKeys] = useState<string[]>([]);
-  const [selectionNormalized, setSelectionNormalized] = useState<string | null>(null);
   const anchorKeyRef = useRef<string | null>(null);
   const pointerSelectingRef = useRef(false);
-  const lastSelectionRef = useRef<{ keys: string[]; normalized: string | null } | null>(null);
+  const lastSelectionRef = useRef<SelectionSnapshot | null>(null);
+
+  const [selectionKeys, setSelectionKeys] = useState<string[]>([]);
+  const [selectionNormalized, setSelectionNormalized] = useState<string | null>(null);
+  const [selectionBoundaries, setSelectionBoundaries] = useState<{ leading: string; trailing: string } | null>(null);
+  const [selectionOriginalLabel, setSelectionOriginalLabel] = useState<string | null>(null);
 
   const selectionKeySet = useMemo(() => new Set(selectionKeys), [selectionKeys]);
   const firstSelectionKey = selectionKeys[0] ?? null;
-  const isSingleSelection = selectionKeys.length === 1;
 
   tokenRegistryRef.current.tokens = [];
 
-  const applySelection = useCallback((startKey: string, endKey: string) => {
-    const tokens = tokenRegistryRef.current.tokens;
-
-    if (!tokens.length) {
-      return null;
-    }
-
-    const startIndex = tokens.findIndex((item) => item.key === startKey);
-    const endIndex = tokens.findIndex((item) => item.key === endKey);
-
-    if (startIndex === -1 || endIndex === -1) {
-      return null;
-    }
-
-    const [from, to] = startIndex <= endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
-    const slice = tokens.slice(from, to + 1);
-    const keys = slice.map((item) => item.key);
-
-    const normalizedJoined = slice
-      .map((item) => item.normalized)
-      .filter(Boolean)
-      .join(" ")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    const normalizedValue = normalizedJoined.length > 0 ? normalizedJoined : null;
-
-    setSelectionKeys(keys);
-    setSelectionNormalized(normalizedValue);
-    lastSelectionRef.current = {
-      keys,
-      normalized: normalizedValue
-    };
-
-    return lastSelectionRef.current;
-  }, []);
+  tokenRegistryRef.current.tokens = [];
 
   const clearSelection = useCallback(() => {
     setSelectionKeys([]);
     setSelectionNormalized(null);
+    setSelectionBoundaries(null);
+    setSelectionOriginalLabel(null);
     lastSelectionRef.current = null;
     pointerSelectingRef.current = false;
     anchorKeyRef.current = null;
     onSelectionChange?.(null);
   }, [onSelectionChange]);
+
+  const applySelection = useCallback(
+    (startKey: string, endKey: string) => {
+      const tokens = tokenRegistryRef.current.tokens;
+
+      if (!tokens.length) {
+        return null;
+      }
+
+      const startIndex = tokens.findIndex((item) => item.key === startKey);
+      const endIndex = tokens.findIndex((item) => item.key === endKey);
+
+      if (startIndex === -1 || endIndex === -1) {
+        return null;
+      }
+
+      const [from, to] = startIndex <= endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
+      const slice = tokens.slice(from, to + 1);
+      const keys = slice.map((item) => item.key);
+
+      const normalizedJoined = slice
+        .map((item) => item.normalized)
+        .filter(Boolean)
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      const normalizedValue = normalizedJoined.length > 0 ? normalizedJoined : null;
+      const firstToken = slice[0];
+      const lastToken = slice[slice.length - 1];
+
+      const originalPieces = slice.map((record, index) => {
+        const separator = index < slice.length - 1 ? record.separatorAfter : "";
+        return `${record.token}${separator}`;
+      });
+      const originalLabel = originalPieces.join("").trim();
+
+      setSelectionKeys(keys);
+      setSelectionNormalized(normalizedValue);
+      setSelectionBoundaries(
+        slice.length > 0 ? { leading: firstToken?.leading ?? "", trailing: lastToken?.trailing ?? "" } : null
+      );
+      setSelectionOriginalLabel(originalLabel || null);
+      lastSelectionRef.current = {
+        keys,
+        normalized: normalizedValue
+      };
+
+      return lastSelectionRef.current;
+    },
+    []
+  );
 
   const finalizeSelection = useCallback(() => {
     if (!pointerSelectingRef.current) {
@@ -105,22 +135,6 @@ const NewsViewer = ({
     anchorKeyRef.current = null;
     onSelectionChange?.(lastSelectionRef.current?.normalized ?? null);
   }, [onSelectionChange]);
-
-  useEffect(() => {
-    const handlePointerUp = () => finalizeSelection();
-
-    window.addEventListener("pointerup", handlePointerUp);
-    window.addEventListener("pointercancel", handlePointerUp);
-
-    return () => {
-      window.removeEventListener("pointerup", handlePointerUp);
-      window.removeEventListener("pointercancel", handlePointerUp);
-    };
-  }, [finalizeSelection]);
-
-  useEffect(() => {
-    clearSelection();
-  }, [clearSelection, data]);
 
   const handlePointerDown = useCallback(
     (tokenKey: string) => (event: React.PointerEvent<HTMLSpanElement>) => {
@@ -183,65 +197,160 @@ const NewsViewer = ({
     [applySelection, onSelectionChange]
   );
 
+  const registerToken = useCallback((record: TokenRecord) => {
+    tokenRegistryRef.current.tokens.push(record);
+  }, []);
+
   const renderInteractiveText = useCallback(
     (text: string, keyPrefix: string): ReactNode[] => {
-      const tokens = text.split(/(\s+)/);
+      type WordSegment = {
+        type: "word";
+        key: string;
+        token: string;
+        record: TokenRecord;
+      };
 
-      return tokens.flatMap((token, index) => {
-        if (!token.length) {
-          return [];
+      type GapSegment = {
+        type: "whitespace";
+        key: string;
+        value: string;
+        prevWordKey: string | null;
+        nextWordKey: string | null;
+      };
+
+      const rawSegments = text.split(/(\s+)/);
+      const segments: Array<WordSegment | GapSegment> = [];
+      let wordCounter = 0;
+      let lastWordKey: string | null = null;
+      let lastWordRecord: TokenRecord | null = null;
+
+      rawSegments.forEach((fragment, fragmentIndex) => {
+        if (!fragment.length) {
+          return;
         }
 
-        if (/^\s+$/.test(token)) {
-          return token.split("\n").flatMap((segment, segIndex) => {
-            const nodes: ReactNode[] = [];
+        if (/^\s+$/.test(fragment)) {
+          const gapSegment: GapSegment = {
+            type: "whitespace",
+            key: `${keyPrefix}-gap-${fragmentIndex}`,
+            value: fragment,
+            prevWordKey: lastWordKey,
+            nextWordKey: null
+          };
 
-            if (segIndex > 0) {
-              nodes.push(<br key={`${keyPrefix}-br-${index}-${segIndex}`} />);
+          segments.push(gapSegment);
+
+          if (lastWordRecord) {
+            lastWordRecord.separatorAfter = fragment;
+          }
+
+          return;
+        }
+
+        const tokenKey = `${keyPrefix}-word-${wordCounter}`;
+        wordCounter += 1;
+
+        const leadingBoundary = fragment.match(/^[^\p{L}\p{N}'-]+/u)?.[0] ?? "";
+        const trailingBoundary = fragment.match(/[^\p{L}\p{N}'-]+$/u)?.[0] ?? "";
+        const normalizedToken = normalizeTokenForTranslation(fragment);
+
+        const record: TokenRecord = {
+          key: tokenKey,
+          token: fragment,
+          normalized: normalizedToken,
+          leading: leadingBoundary,
+          trailing: trailingBoundary,
+          separatorAfter: ""
+        };
+
+        registerToken(record);
+
+        segments.push({
+          type: "word",
+          key: tokenKey,
+          token: fragment,
+          record
+        });
+
+        lastWordKey = tokenKey;
+        lastWordRecord = record;
+      });
+
+      for (let index = segments.length - 1, nextWordKey: string | null = null; index >= 0; index -= 1) {
+        const segment = segments[index];
+
+        if (segment.type === "word") {
+          nextWordKey = segment.key;
+        } else {
+          segment.nextWordKey = nextWordKey;
+        }
+      }
+
+      const hasActiveTranslation =
+        Boolean(
+          selectionNormalized &&
+            activeSelectionNormalized &&
+            translatedWord &&
+            activeSelectionNormalized === selectionNormalized &&
+            !isTranslating
+        );
+
+      const translationLeading = selectionBoundaries?.leading ?? "";
+      const translationTrailing = selectionBoundaries?.trailing ?? "";
+      const translationLabel = selectionOriginalLabel ?? selectionNormalized ?? "";
+
+      const nodes: ReactNode[] = [];
+
+      segments.forEach((segment) => {
+        if (segment.type === "whitespace") {
+          if (
+            hasActiveTranslation &&
+            segment.prevWordKey &&
+            segment.nextWordKey &&
+            selectionKeySet.has(segment.prevWordKey) &&
+            selectionKeySet.has(segment.nextWordKey)
+          ) {
+            return;
+          }
+
+          const parts = segment.value.split("\n");
+
+          parts.forEach((part, partIndex) => {
+            if (partIndex > 0) {
+              nodes.push(<br key={`${segment.key}-br-${partIndex}`} />);
             }
 
-            if (segment) {
+            if (part) {
               nodes.push(
-                <span key={`${keyPrefix}-space-${index}-${segIndex}`} className="interactive-word__gap">
-                  {segment}
+                <span key={`${segment.key}-space-${partIndex}`} className="interactive-word__gap">
+                  {part}
                 </span>
               );
             }
-
-            return nodes;
           });
+
+          return;
         }
 
-        const tokenKey = `${keyPrefix}-word-${index}`;
-        const leadingBoundary = token.match(/^[^\p{L}\p{N}'-]+/u)?.[0] ?? "";
-        const trailingBoundary = token.match(/[^\p{L}\p{N}'-]+$/u)?.[0] ?? "";
-        const normalizedToken = normalizeTokenForTranslation(token);
-
-        tokenRegistryRef.current.tokens.push({
-          key: tokenKey,
-          token,
-          normalized: normalizedToken,
-          leading: leadingBoundary,
-          trailing: trailingBoundary
-        });
-
+        const tokenKey = segment.key;
         const isSelected = selectionKeySet.has(tokenKey);
         const isSelectionStart = isSelected && firstSelectionKey === tokenKey;
-        const showInlineTranslation =
-          isSelected &&
-          isSelectionStart &&
-          isSingleSelection &&
-          Boolean(translatedWord) &&
-          !isTranslating &&
-          selectionNormalized &&
-          activeSelectionNormalized &&
-          activeSelectionNormalized === selectionNormalized;
+        const showInlineTranslation = isSelectionStart && hasActiveTranslation;
+
+        if (isSelected && hasActiveTranslation && !isSelectionStart) {
+          return;
+        }
+
+  const leadingBoundary = segment.record.leading;
+  const trailingBoundary = segment.record.trailing;
 
         const displayValue = showInlineTranslation
           ? `${leadingBoundary}${translatedWord}${trailingBoundary}`
-          : token;
+          : segment.token;
 
-        return (
+        const dataOriginal = showInlineTranslation ? translationLabel || segment.token : segment.token;
+
+        nodes.push(
           <span
             key={tokenKey}
             role="button"
@@ -266,7 +375,7 @@ const NewsViewer = ({
           >
             <span
               className="interactive-word__label"
-              data-original={token}
+              data-original={dataOriginal}
               data-translation-active={showInlineTranslation ? "true" : undefined}
             >
               {displayValue}
@@ -274,21 +383,64 @@ const NewsViewer = ({
           </span>
         );
       });
+
+      return nodes;
     },
     [
       activeSelectionNormalized,
       clearSelection,
+      firstSelectionKey,
       handleKeySelection,
       handlePointerDown,
       handlePointerEnter,
-      isSingleSelection,
       isTranslating,
+      registerToken,
+      selectionBoundaries,
       selectionKeySet,
       selectionNormalized,
-      translatedWord,
-      firstSelectionKey
+      selectionOriginalLabel,
+      translatedWord
     ]
   );
+
+  useEffect(() => {
+    const handlePointerUp = () => finalizeSelection();
+
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+
+    return () => {
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+    };
+  }, [finalizeSelection]);
+
+  useEffect(() => {
+    clearSelection();
+    tokenRegistryRef.current = { tokens: [] };
+  }, [clearSelection, data]);
+
+  useEffect(() => {
+    const current = lastSelectionRef.current;
+
+    if (!current) {
+      return;
+    }
+
+    const isSameSelection =
+      current.normalized === selectionNormalized &&
+      current.keys.length === selectionKeys.length &&
+      current.keys.every((key, index) => key === selectionKeys[index]);
+
+    if (isSameSelection) {
+      return;
+    }
+
+    lastSelectionRef.current = {
+      keys: selectionKeys,
+      normalized: selectionNormalized
+    };
+  }, [selectionKeys, selectionNormalized]);
 
   return (
     <div
@@ -323,39 +475,41 @@ const NewsViewer = ({
           </figure>
         )}
         <section className="grid gap-11">
-          {(data.sections || []).map((section, index) => (
+          {(data.sections ?? []).map((section: Section, index) => (
             <article
               key={index}
               className="relative border-4 border-foreground bg-gradient-to-br from-foreground/5 to-transparent p-9"
             >
-              <div className="pointer-events-none absolute inset-3 border-2 border-foreground/10"></div>
+              <div className="pointer-events-none absolute inset-3 border-2 border-foreground/10" />
               {section.heading ? (
                 <h2 style={{ fontSize: "1.75em" }}>
                   {renderInteractiveText(section.heading, `section-${index}-heading`)}
                 </h2>
               ) : null}
-              {(section.blocks || []).map((block, bIndex) => {
+              {(section.blocks ?? []).map((block: SectionBlock, bIndex) => {
                 if (block.type === "paragraph") {
                   return (
                     <p key={bIndex} style={{ fontSize: "1.25em" }}>
-                      {renderInteractiveText(block.text || "", `section-${index}-paragraph-${bIndex}`)}
+                      {renderInteractiveText(block.text ?? "", `section-${index}-paragraph-${bIndex}`)}
                     </p>
                   );
                 }
+
                 if (block.type === "list") {
                   return (
                     <ul key={bIndex} className="list-none p-0 my-4">
-                      {(block.items || []).map((item, iIndex) => (
+                      {(block.items ?? []).map((item: string, iIndex) => (
                         <li key={iIndex} className="relative mb-3 pl-8" style={{ fontSize: "1.25em" }}>
                           <span className="absolute left-2 top-0" style={{ fontSize: "1em" }}>
                             ✦
                           </span>
-                          {renderInteractiveText(item || "", `section-${index}-list-${bIndex}-${iIndex}`)}
+                          {renderInteractiveText(item ?? "", `section-${index}-list-${bIndex}-${iIndex}`)}
                         </li>
                       ))}
                     </ul>
                   );
                 }
+
                 return null;
               })}
             </article>

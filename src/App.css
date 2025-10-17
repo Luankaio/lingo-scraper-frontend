@@ -16,6 +16,8 @@
   overflow: visible;
   margin: 0 0.08em;
   user-select: none;
+  max-width: 100%;
+  flex-wrap: wrap;
 }
 
 .interactive-word::after {
@@ -46,7 +48,8 @@
 .interactive-word__label {
   position: relative;
   z-index: 1;
-  white-space: pre;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .interactive-word--active {
