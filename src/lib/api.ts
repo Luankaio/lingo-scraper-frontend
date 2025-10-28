@@ -2,11 +2,16 @@ const DEFAULT_API_URL = "http://127.0.0.1:8000";
 
 export const API_URL = import.meta.env.VITE_API_URL ?? DEFAULT_API_URL;
 
+export interface SpaceWord {
+  word: string;
+  isChecked: boolean;
+}
+
 export interface SpaceDocument {
   _id: string;
   name: string;
   content: string[];
-  words: string[];
+  words: SpaceWord[];
   createdAt: string;
   updatedAt: string;
 }
@@ -36,7 +41,7 @@ export const upsertSpace = async (name: string): Promise<SpaceDocument> => {
 interface UpdateSpacePayload {
   id: string;
   content: string[];
-  words: string[];
+  words: SpaceWord[];
 }
 
 const sendUpdate = async (
@@ -181,4 +186,42 @@ export const extractWords = (text: string, limit = 500): string[] => {
   }
 
   return Array.from(unique);
+};
+
+export const removeWordFromSpace = async ({
+  spaceName,
+  word
+}: {
+  spaceName: string;
+  word: string;
+}): Promise<SpaceDocument> => {
+  const response = await fetch(`${API_URL}/spaces/words`, {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+      accept: "application/json"
+    },
+    body: JSON.stringify({ space_name: spaceName, word })
+  });
+
+  return handleResponse(response);
+};
+
+export const removeContentFromSpace = async ({
+  spaceName,
+  url
+}: {
+  spaceName: string;
+  url: string;
+}): Promise<SpaceDocument> => {
+  const response = await fetch(`${API_URL}/spaces/content`, {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+      accept: "application/json"
+    },
+    body: JSON.stringify({ space_name: spaceName, url })
+  });
+
+  return handleResponse(response);
 };

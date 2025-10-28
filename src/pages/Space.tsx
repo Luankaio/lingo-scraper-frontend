@@ -2,13 +2,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Check, ChevronDown, Globe, Volume2 } from "lucide-react";
+import { Check, ChevronDown, Globe, Trash2, Volume2 } from "lucide-react";
 
 import Logo from "@/components/Logo";
 import NewsViewer from "@/components/NewsViewer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { extractWords, NewsData, scrapeUrl, translateWord, updateSpaceContent, upsertSpace } from "@/lib/api";
+import {
+  extractWords,
+  type SpaceWord,
+  NewsData,
+  removeContentFromSpace,
+  removeWordFromSpace,
+  scrapeUrl,
+  translateWord,
+  updateSpaceContent,
+  upsertSpace
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { GoogleTranslateLanguage } from "@/lib/googleTranslateLanguages";
 import {
@@ -216,6 +226,8 @@ const Space = () => {
     const fallback = findGoogleTranslateLanguage(DEFAULT_GOOGLE_TRANSLATE_LANGUAGE);
     return fallback?.code ?? GOOGLE_TRANSLATE_LANGUAGES[0].code;
   });
+  const [wordBeingRemoved, setWordBeingRemoved] = useState<string | null>(null);
+  const [linkBeingRemoved, setLinkBeingRemoved] = useState<string | null>(null);
   const languageMenuRef = useRef<HTMLDivElement | null>(null);
   const translationControllerRef = useRef<AbortController | null>(null);
   const [selectedTextInfo, setSelectedTextInfo] = useState<
@@ -288,7 +300,7 @@ const Space = () => {
   }, [spaceQuery.data]);
 
   const mutation = useMutation({
-    mutationFn: ({ id, text, words }: { id: string; text: string; words: string[] }) =>
+    mutationFn: ({ id, text, words }: { id: string; text: string; words: SpaceWord[] }) =>
       updateSpaceContent({
         id,
         content: text
@@ -311,6 +323,63 @@ const Space = () => {
     }
   });
 
+  const removeWordMutation = useMutation({
+    mutationFn: async (word: string) => {
+      if (!name) {
+        throw new Error("Nenhum espaço selecionado.");
+      }
+
+      return removeWordFromSpace({ spaceName: name, word });
+    },
+    onSuccess: (updatedSpace, word) => {
+      if (!name) {
+        return;
+      }
+
+  queryClient.setQueryData(["space", name], updatedSpace);
+  toast.success(`"${word}" removida da lista.`);
+    },
+    onError: (error: unknown, word) => {
+      const description = error instanceof Error ? error.message : "Tente novamente em instantes.";
+      toast.error("Não foi possível remover a palavra.", {
+        description
+      });
+      console.error("removeWordFromSpace", word, error);
+    },
+    onSettled: () => {
+      setWordBeingRemoved(null);
+    }
+  });
+
+  const removeLinkMutation = useMutation({
+    mutationFn: async (url: string) => {
+      if (!name) {
+        throw new Error("Nenhum espaço selecionado.");
+      }
+
+      return removeContentFromSpace({ spaceName: name, url });
+    },
+    onSuccess: (updatedSpace, url) => {
+      if (!name) {
+        return;
+      }
+
+      queryClient.setQueryData(["space", name], updatedSpace);
+      setScrapeHistory((previous) => previous.filter((entry) => entry !== url));
+      toast.success("Link removido da coleção.");
+    },
+    onError: (error: unknown, url) => {
+      const description = error instanceof Error ? error.message : "Tente novamente em instantes.";
+      toast.error("Não foi possível remover o link.", {
+        description
+      });
+      console.error("removeContentFromSpace", url, error);
+    },
+    onSettled: () => {
+      setLinkBeingRemoved(null);
+    }
+  });
+
   useEffect(() => {
     if (!spaceQuery.data) {
       return;
@@ -323,10 +392,21 @@ const Space = () => {
     setStatus("saving");
 
     const handle = window.setTimeout(() => {
+      const extracted = extractWords(draft);
+      const previousState = new Map(
+        (spaceQuery.data?.words ?? [])
+          .filter((entry): entry is SpaceWord => Boolean(entry?.word))
+          .map((entry) => [entry.word, Boolean(entry.isChecked)])
+      );
+      const nextWords: SpaceWord[] = extracted.map((word) => ({
+        word,
+        isChecked: previousState.get(word) ?? false
+      }));
+
       mutation.mutate({
         id: spaceQuery.data._id,
         text: draft,
-        words: extractWords(draft)
+        words: nextWords
       });
     }, 900);
 
@@ -400,6 +480,34 @@ const Space = () => {
     setLanguageQuery("");
     setIsLanguageMenuOpen(false);
   }, []);
+
+  const handleRemoveWord = useCallback(
+    (word: string) => {
+      const trimmed = word.trim();
+
+      if (!trimmed || removeWordMutation.isPending) {
+        return;
+      }
+
+      setWordBeingRemoved(trimmed);
+      removeWordMutation.mutate(trimmed);
+    },
+    [removeWordMutation]
+  );
+
+  const handleRemoveLink = useCallback(
+    (url: string) => {
+      const normalized = normalizeCacheKey(url);
+
+      if (!normalized || removeLinkMutation.isPending) {
+        return;
+      }
+
+      setLinkBeingRemoved(normalized);
+      removeLinkMutation.mutate(normalized);
+    },
+    [removeLinkMutation]
+  );
 
   const handleSelectionChange = useCallback((text: string | null) => {
     const original = (text ?? "").replace(/\s+/g, " ").trim();
@@ -620,7 +728,21 @@ const Space = () => {
     return combined;
   }, [draft, scrapeHistory]);
 
-  const savedWords = useMemo(() => spaceQuery.data?.words ?? [], [spaceQuery.data?.words]);
+  const savedWords = useMemo<SpaceWord[]>(() => {
+    const entries = spaceQuery.data?.words ?? [];
+    return entries
+      .map((entry) => {
+        if (typeof entry?.word !== "string") {
+          return null;
+        }
+
+        return {
+          word: entry.word.trim(),
+          isChecked: Boolean(entry.isChecked)
+        };
+      })
+      .filter((entry): entry is SpaceWord => Boolean(entry && entry.word.length > 0));
+  }, [spaceQuery.data?.words]);
 
   const recordScrapeHistoryEntry = (url: string) => {
     const normalized = normalizeCacheKey(url);
@@ -792,22 +914,42 @@ const Space = () => {
                     </p>
                   ) : (
                     <ul className="space-y-3 text-sm">
-                      {savedLinks.map((url) => (
-                        <li key={url} className="sketch-border border-2 border-foreground/50 bg-background px-3 py-2 shadow-[6px_6px_0_rgba(0,0,0,0.35)]">
-                          <a
-                            href={url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="block truncate text-left text-foreground underline-offset-2 hover:underline"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              void handleScrape(url);
-                            }}
+                      {savedLinks.map((url) => {
+                        const normalizedUrl = normalizeCacheKey(url);
+                        const isRemoving = linkBeingRemoved === normalizedUrl && removeLinkMutation.isPending;
+                        return (
+                          <li
+                            key={url}
+                            className="sketch-border border-2 border-foreground/50 bg-background px-3 py-2 shadow-[6px_6px_0_rgba(0,0,0,0.35)]"
                           >
-                            {url}
-                          </a>
-                        </li>
-                      ))}
+                            <div className="flex items-start justify-between gap-2">
+                              <button
+                                type="button"
+                                className="max-w-[calc(100%-2.8rem)] text-left font-medium text-foreground transition-transform duration-150 ease-out hover:-translate-y-0.5 whitespace-normal break-words"
+                                onClick={() => void handleScrape(url)}
+                                disabled={isRemoving}
+                                title={url}
+                              >
+                                <span className="block break-words">{url}</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="paper-trash-button"
+                                aria-label={`Remover ${url}`}
+                                title="Remover"
+                                disabled={isRemoving}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  handleRemoveLink(url);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </li>
+                        );
+                      })}
                     </ul>
                   )
                 ) : (
@@ -817,11 +959,37 @@ const Space = () => {
                     </p>
                   ) : (
                     <ul className="space-y-3 text-sm">
-                      {savedWords.slice(0, 50).map((word) => (
-                        <li key={word} className="sketch-border border-2 border-foreground/50 bg-background px-3 py-2 shadow-[6px_6px_0_rgba(0,0,0,0.35)]">
-                          {word}
-                        </li>
-                      ))}
+                      {savedWords.slice(0, 50).map((entry, index) => {
+                        const wordKey = entry.word.trim();
+                        const isRemoving = wordBeingRemoved === wordKey && removeWordMutation.isPending;
+
+                        return (
+                          <li
+                            key={`${entry.word}-${index}`}
+                            className="sketch-border border-2 border-foreground/50 bg-background px-3 py-2 shadow-[6px_6px_0_rgba(0,0,0,0.35)] text-left"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="max-w-[calc(100%-2.8rem)] whitespace-normal break-words text-left text-foreground">
+                                {entry.word}
+                              </span>
+                              <button
+                                type="button"
+                                className="paper-trash-button"
+                                aria-label={`Remover ${entry.word}`}
+                                title="Remover"
+                                disabled={isRemoving}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  handleRemoveWord(entry.word);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </li>
+                        );
+                      })}
                     </ul>
                   )
                 )}
