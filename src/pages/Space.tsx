@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Check, ChevronDown, Globe, Trash2, Volume2 } from "lucide-react";
+import { Check, ChevronDown, Globe, Plus, Trash2, Volume2 } from "lucide-react";
 
 import Logo from "@/components/Logo";
 import NewsViewer from "@/components/NewsViewer";
@@ -12,6 +12,7 @@ import {
   extractWords,
   type SpaceWord,
   NewsData,
+  addWordToSpace,
   removeContentFromSpace,
   removeWordFromSpace,
   scrapeUrl,
@@ -241,6 +242,19 @@ const Space = () => {
   const [isPlayingPronunciation, setIsPlayingPronunciation] = useState(false);
   const [pronunciationError, setPronunciationError] = useState<string | null>(null);
   const selectedText = selectedTextInfo?.original ?? null;
+  const canSaveSelectedWord = useMemo(() => {
+    if (!selectedTextInfo) {
+      return false;
+    }
+
+    const normalized = selectedTextInfo.normalized?.trim();
+
+    if (normalized) {
+      return true;
+    }
+
+    return Boolean(selectedTextInfo.original.trim());
+  }, [selectedTextInfo]);
 
   const cancelSpeechSynthesis = useCallback(() => {
     if (typeof window === "undefined") {
@@ -380,6 +394,30 @@ const Space = () => {
     }
   });
 
+  const addWordMutation = useMutation({
+    mutationFn: async (word: string) => {
+      if (!name) {
+        throw new Error("Nenhum espaço selecionado.");
+      }
+
+      return addWordToSpace({ spaceName: name, word, isChecked: false });
+    },
+    onSuccess: (updatedSpace, word) => {
+      if (!name) {
+        return;
+      }
+
+      queryClient.setQueryData(["space", name], updatedSpace);
+      toast.success(`"${word}" salva na sua lista.`);
+    },
+    onError: (error: unknown) => {
+      const description = error instanceof Error ? error.message : "Tente novamente em instantes.";
+      toast.error("Não foi possível salvar a palavra.", {
+        description
+      });
+    }
+  });
+
   useEffect(() => {
     if (!spaceQuery.data) {
       return;
@@ -508,6 +546,26 @@ const Space = () => {
     },
     [removeLinkMutation]
   );
+
+  const handleAddWord = useCallback(() => {
+    if (!selectedTextInfo || !canSaveSelectedWord) {
+      toast.error("Selecione uma palavra ou frase antes de salvar.");
+      return;
+    }
+
+    const candidate = (selectedTextInfo.normalized || selectedTextInfo.original || "").trim();
+
+    if (!candidate) {
+      toast.error("Não foi possível identificar a palavra selecionada.");
+      return;
+    }
+
+    if (addWordMutation.isPending) {
+      return;
+    }
+
+    addWordMutation.mutate(candidate);
+  }, [addWordMutation, canSaveSelectedWord, selectedTextInfo]);
 
   const handleSelectionChange = useCallback((text: string | null) => {
     const original = (text ?? "").replace(/\s+/g, " ").trim();
@@ -1033,58 +1091,72 @@ const Space = () => {
                     Bold
                   </button>
                 </div>
-                <div className="flex h-[8rem] w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border-4 border-foreground/20 bg-background/80 px-5 py-3 text-center shadow-[8px_8px_0_0_rgba(0,0,0,0.25)] sm:mx-auto sm:max-w-xl sm:justify-self-center">
-                  {selectedText ? (
-                    <div className="flex h-full w-full flex-col items-center gap-2 overflow-y-auto">
-                      <div className="flex w-full items-center justify-center gap-2">
-                        <span
-                          className="max-w-[14rem] truncate text-lg font-semibold text-foreground sm:max-w-[18rem]"
-                          title={selectedText}
-                        >
-                          {selectedText}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={playPronunciation}
-                          disabled={isPlayingPronunciation}
-                          className={cn(
-                            "inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-foreground/40 text-foreground transition-all",
-                            isPlayingPronunciation
-                              ? "bg-foreground text-background"
-                              : "hover:-translate-y-0.5 hover:bg-foreground hover:text-background"
-                          )}
-                          aria-label="Ouvir pronúncia"
-                        >
-                          <Volume2 className="h-4 w-4" />
-                        </button>
+                <div className="relative z-[150] w-full sm:max-w-xl sm:justify-self-center">
+                  <div className="absolute right-0 top-0 z-[200] translate-x-1/3 -translate-y-1/3">
+                    <button
+                      type="button"
+                      className="paper-add-button"
+                      aria-label="Salvar palavra"
+                      title="Salvar palavra selecionada"
+                      onClick={handleAddWord}
+                      disabled={!canSaveSelectedWord || addWordMutation.isPending}
+                    >
+                      <Plus className="h-5 w-5" />
+                    </button>
+                  </div>
+                  <div className="flex h-[8rem] w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border-4 border-foreground/20 bg-background/80 px-5 py-3 text-center shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+                    {selectedText ? (
+                      <div className="flex h-full w-full flex-col items-center gap-2 overflow-y-auto">
+                        <div className="flex w-full items-center justify-center gap-2">
+                          <span
+                            className="max-w-[14rem] truncate text-lg font-semibold text-foreground sm:max-w-[18rem]"
+                            title={selectedText}
+                          >
+                            {selectedText}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={playPronunciation}
+                            disabled={isPlayingPronunciation}
+                            className={cn(
+                              "inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-foreground/40 text-foreground transition-all",
+                              isPlayingPronunciation
+                                ? "bg-foreground text-background"
+                                : "hover:-translate-y-0.5 hover:bg-foreground hover:text-background"
+                            )}
+                            aria-label="Ouvir pronúncia"
+                          >
+                            <Volume2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                        {pronunciationError ? (
+                          <span className="text-xs text-red-600">{pronunciationError}</span>
+                        ) : null}
+                        {isTranslatingWord ? (
+                          <span className="text-sm text-foreground/70">Traduzindo…</span>
+                        ) : translationError ? (
+                          <span className="text-sm text-red-600">{translationError}</span>
+                        ) : translatedWord ? (
+                          <span className="text-xl font-semibold text-foreground">{translatedWord}</span>
+                        ) : (
+                          <span className="text-sm text-foreground/60">Nenhum resultado.</span>
+                        )}
+                        {detectedLanguageLabel ? (
+                          <span className="text-xs text-foreground/60" title={`${detectedLanguageLabel} → ${selectedLanguage.name}`}>
+                            <span className="font-medium text-foreground">{detectedLanguageLabel}</span>
+                            <span className="mx-1 text-foreground/40">•</span>
+                            <span className="font-medium text-foreground">{selectedLanguage.code.toUpperCase()}</span>
+                          </span>
+                        ) : null}
                       </div>
-                      {pronunciationError ? (
-                        <span className="text-xs text-red-600">{pronunciationError}</span>
-                      ) : null}
-                      {isTranslatingWord ? (
-                        <span className="text-sm text-foreground/70">Traduzindo…</span>
-                      ) : translationError ? (
-                        <span className="text-sm text-red-600">{translationError}</span>
-                      ) : translatedWord ? (
-                        <span className="text-xl font-semibold text-foreground">{translatedWord}</span>
-                      ) : (
-                        <span className="text-sm text-foreground/60">Nenhum resultado.</span>
-                      )}
-                      {detectedLanguageLabel ? (
-                        <span className="text-xs text-foreground/60" title={`${detectedLanguageLabel} → ${selectedLanguage.name}`}>
-                          <span className="font-medium text-foreground">{detectedLanguageLabel}</span>
-                          <span className="mx-1 text-foreground/40">•</span>
-                          <span className="font-medium text-foreground">{selectedLanguage.code.toUpperCase()}</span>
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center">
+                        <span className="text-sm text-foreground/60">
+                          Clique e arraste para selecionar palavras ou frases e traduzir para {selectedLanguage.name}.
                         </span>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center">
-                      <span className="text-sm text-foreground/60">
-                        Clique e arraste para selecionar palavras ou frases e traduzir para {selectedLanguage.name}.
-                      </span>
-                    </div>
-                  )}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center justify-end pr-3 sm:pr-6">
                   <div ref={languageMenuRef} className="relative">

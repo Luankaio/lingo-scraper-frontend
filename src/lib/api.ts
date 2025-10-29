@@ -225,3 +225,24 @@ export const removeContentFromSpace = async ({
 
   return handleResponse(response);
 };
+
+export const addWordToSpace = async ({
+  spaceName,
+  word,
+  isChecked = false
+}: {
+  spaceName: string;
+  word: string;
+  isChecked?: boolean;
+}): Promise<SpaceDocument> => {
+  const response = await fetch(`${API_URL}/spaces/words`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      accept: "application/json"
+    },
+    body: JSON.stringify({ space_name: spaceName, word, isChecked })
+  });
+
+  return handleResponse(response);
+};
