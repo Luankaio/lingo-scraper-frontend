@@ -30,7 +30,7 @@ import {
 
 const STATUS_LABELS: Record<SaveStatus, string> = {
   idle: "",
-  saving: "Saving…",
+  saving: "Saving...",
   saved: "All changes saved",
   error: "Error saving"
 };
@@ -54,12 +54,12 @@ type FontOption = {
 const FONT_OPTIONS: FontOption[] = [
   {
     key: "handwritten",
-    label: "Rabisco padrão",
+    label: "Default Handwriting",
     fontFamily: "'Patrick Hand', 'Gloria Hallelujah', cursive"
   },
   {
     key: "oldpress",
-    label: "Jornal antigo",
+    label: "Vintage Newspaper",
     fontFamily: "'Old Standard TT', 'Times New Roman', serif"
   }
 ];
@@ -353,7 +353,7 @@ const Space = () => {
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : "Unknown error";
       setStatus("error");
-      toast.error("We couldn’t save your notes", {
+      toast.error("We couldn't save your notes", {
         description: message
       });
     }
@@ -362,7 +362,7 @@ const Space = () => {
   const removeWordMutation = useMutation({
     mutationFn: async (word: string) => {
       if (!name) {
-        throw new Error("Nenhum espaço selecionado.");
+        throw new Error("No space selected.");
       }
 
       return removeWordFromSpace({ spaceName: name, word });
@@ -372,12 +372,12 @@ const Space = () => {
         return;
       }
 
-  queryClient.setQueryData(["space", name], updatedSpace);
-  toast.success(`"${word}" removida da lista.`);
+      queryClient.setQueryData(["space", name], updatedSpace);
+      toast.success(`Removed "${word}" from the list.`);
     },
     onError: (error: unknown, word) => {
-      const description = error instanceof Error ? error.message : "Tente novamente em instantes.";
-      toast.error("Não foi possível remover a palavra.", {
+      const description = error instanceof Error ? error.message : "Please try again in a moment.";
+      toast.error("Could not remove the word.", {
         description
       });
       console.error("removeWordFromSpace", word, error);
@@ -390,7 +390,7 @@ const Space = () => {
   const removeLinkMutation = useMutation({
     mutationFn: async (url: string) => {
       if (!name) {
-        throw new Error("Nenhum espaço selecionado.");
+        throw new Error("No space selected.");
       }
 
       return removeContentFromSpace({ spaceName: name, url });
@@ -402,11 +402,11 @@ const Space = () => {
 
       queryClient.setQueryData(["space", name], updatedSpace);
       setScrapeHistory((previous) => previous.filter((entry) => entry !== url));
-      toast.success("Link removido da coleção.");
+      toast.success("Removed link from your collection.");
     },
     onError: (error: unknown, url) => {
-      const description = error instanceof Error ? error.message : "Tente novamente em instantes.";
-      toast.error("Não foi possível remover o link.", {
+      const description = error instanceof Error ? error.message : "Please try again in a moment.";
+      toast.error("Could not remove the link.", {
         description
       });
       console.error("removeContentFromSpace", url, error);
@@ -419,7 +419,7 @@ const Space = () => {
   const addWordMutation = useMutation({
     mutationFn: async (word: string) => {
       if (!name) {
-        throw new Error("Nenhum espaço selecionado.");
+        throw new Error("No space selected.");
       }
 
       return addWordToSpace({ spaceName: name, word, isChecked: false });
@@ -430,11 +430,11 @@ const Space = () => {
       }
 
       queryClient.setQueryData(["space", name], updatedSpace);
-      toast.success(`"${word}" salva na sua lista.`);
+      toast.success(`Saved "${word}" to your list.`);
     },
     onError: (error: unknown) => {
-      const description = error instanceof Error ? error.message : "Tente novamente em instantes.";
-      toast.error("Não foi possível salvar a palavra.", {
+      const description = error instanceof Error ? error.message : "Please try again in a moment.";
+      toast.error("Could not save the word.", {
         description
       });
     }
@@ -608,14 +608,14 @@ const Space = () => {
 
   const handleAddWord = useCallback(() => {
     if (!selectedTextInfo || !canSaveSelectedWord) {
-      toast.error("Selecione uma palavra ou frase antes de salvar.");
+      toast.error("Select a word or phrase before saving.");
       return;
     }
 
     const candidate = (selectedTextInfo.normalized || selectedTextInfo.original || "").trim();
 
     if (!candidate) {
-      toast.error("Não foi possível identificar a palavra selecionada.");
+      toast.error("Could not identify the selected text.");
       return;
     }
 
@@ -656,7 +656,7 @@ const Space = () => {
   const speakWithBrowser = useCallback(
     (text: string, languageCode: string) => {
       if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-        setPronunciationError("Reprodução de áudio não disponível neste navegador.");
+        setPronunciationError("Audio playback is not available in this browser.");
         setIsPlayingPronunciation(false);
         return;
       }
@@ -667,7 +667,7 @@ const Space = () => {
       utterance.lang = languageCode.replace("_", "-");
       utterance.rate = 0.95;
       utterance.onerror = () => {
-        setPronunciationError("Não foi possível reproduzir o áudio.");
+        setPronunciationError("Could not play the audio.");
         setIsPlayingPronunciation(false);
       };
       utterance.onend = () => {
@@ -678,7 +678,7 @@ const Space = () => {
         setIsPlayingPronunciation(true);
         window.speechSynthesis.speak(utterance);
       } catch {
-        setPronunciationError("Não foi possível reproduzir o áudio.");
+        setPronunciationError("Could not play the audio.");
         setIsPlayingPronunciation(false);
       }
     },
@@ -701,7 +701,7 @@ const Space = () => {
     const query = encodeURIComponent(sanitized);
     const audioUrl = `https://translate.googleapis.com/translate_tts?ie=UTF-8&client=tw-ob&q=${query}&tl=${languageCode}&textlen=${sanitized.length}`;
 
-    setPronunciationError(text.length > 200 ? "Texto muito longo para pronúncia completa." : null);
+  setPronunciationError(text.length > 200 ? "Text is too long for complete pronunciation." : null);
     setIsPlayingPronunciation(true);
 
     try {
@@ -777,7 +777,7 @@ const Space = () => {
           return;
         }
 
-        setTranslationError(error instanceof Error ? error.message : "Não foi possível traduzir.");
+  setTranslationError(error instanceof Error ? error.message : "Could not translate.");
         setTranslatedWord(null);
         setDetectedLanguage(null);
       })
@@ -899,7 +899,7 @@ const Space = () => {
       setScrapedData(cached);
       recordScrapeHistoryEntry(url);
       if (showToast) {
-        toast.success("Conteúdo carregado do cache!");
+        toast.success("Loaded content from cache!");
       }
       return;
     }
@@ -910,10 +910,10 @@ const Space = () => {
       setCachedScrape(url, data);
       recordScrapeHistoryEntry(url);
       if (showToast) {
-        toast.success("Página raspada com sucesso!");
+        toast.success("Scraped page successfully!");
       }
     } catch (error) {
-      toast.error("Erro ao raspar: " + (error instanceof Error ? error.message : "Erro desconhecido"));
+      toast.error("Scraping error: " + (error instanceof Error ? error.message : "Unknown error"));
     }
   };
 
@@ -1026,7 +1026,7 @@ const Space = () => {
                   </span>
                 </button>
               </div>
-              <p className="text-sm text-foreground/70">Quick access to every URL you’ve written.</p>
+              <p className="text-sm text-foreground/70">Quick access to every URL you've written.</p>
             </div>
 
             <div className="relative flex-1 overflow-hidden">
@@ -1049,7 +1049,7 @@ const Space = () => {
                         return (
                           <li
                             key={url}
-                            className="sketch-border border-2 border-foreground/50 bg-background px-3 py-2 shadow-[6px_6px_0_rgba(0,0,0,0.35)]"
+                            className="sketch-border border-2 border-foreground/50 bg-background px-3 py-2 shadow-[6px_6px_0_rgba(0,0,0,0.35)] transition-colors hover:bg-foreground/10"
                           >
                             <div className="flex items-start justify-between gap-2">
                               <button
@@ -1064,8 +1064,8 @@ const Space = () => {
                               <button
                                 type="button"
                                 className="paper-trash-button"
-                                aria-label={`Remover ${url}`}
-                                title="Remover"
+                                aria-label={`Remove ${url}`}
+                                title="Remove"
                                 disabled={isRemoving}
                                 onClick={(event) => {
                                   event.preventDefault();
@@ -1095,7 +1095,7 @@ const Space = () => {
                         return (
                           <li
                             key={`${entry.word}-${index}`}
-                            className="sketch-border border-2 border-foreground/50 bg-background px-3 py-2 shadow-[6px_6px_0_rgba(0,0,0,0.35)] text-left"
+                            className="sketch-border border-2 border-foreground/50 bg-background px-3 py-2 shadow-[6px_6px_0_rgba(0,0,0,0.35)] text-left transition-colors hover:bg-foreground/10"
                           >
                             <div className="flex items-start justify-between gap-2">
                               <span className="max-w-[calc(100%-2.8rem)] whitespace-normal break-words text-left text-foreground">
@@ -1104,8 +1104,8 @@ const Space = () => {
                               <button
                                 type="button"
                                 className="paper-trash-button"
-                                aria-label={`Remover ${entry.word}`}
-                                title="Remover"
+                                aria-label={`Remove ${entry.word}`}
+                                title="Remove"
                                 disabled={isRemoving}
                                 onClick={(event) => {
                                   event.preventDefault();
@@ -1130,11 +1130,11 @@ const Space = () => {
         <section className={cn("flex flex-1 flex-col overflow-hidden", scrapedData ? "p-0" : "px-6 py-6 sm:px-10 sm:py-10")}>
           {spaceQuery.isPending ? (
             <div className="flex flex-1 items-center justify-center">
-              <span className="sketch-border px-6 py-3 text-sm uppercase tracking-[0.3em] text-foreground">Loading space…</span>
+              <span className="sketch-border px-6 py-3 text-sm uppercase tracking-[0.3em] text-foreground">Loading space...</span>
             </div>
           ) : spaceQuery.isError ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
-              <p className="text-lg text-foreground/70">We couldn’t open this space.</p>
+              <p className="text-lg text-foreground/70">We couldn't open this space.</p>
               <Button onClick={() => spaceQuery.refetch()} className="px-8">
                 try again
               </Button>
@@ -1225,8 +1225,8 @@ const Space = () => {
                     <button
                       type="button"
                       className="paper-add-button"
-                      aria-label="Salvar palavra"
-                      title="Salvar palavra selecionada"
+                      aria-label="Save word"
+                      title="Save selected word"
                       onClick={handleAddWord}
                       disabled={!canSaveSelectedWord || addWordMutation.isPending}
                     >
@@ -1253,7 +1253,7 @@ const Space = () => {
                                 ? "bg-foreground text-background"
                                 : "hover:-translate-y-0.5 hover:bg-foreground hover:text-background"
                             )}
-                            aria-label="Ouvir pronúncia"
+                            aria-label="Hear pronunciation"
                           >
                             <Volume2 className="h-4 w-4" />
                           </button>
@@ -1262,13 +1262,13 @@ const Space = () => {
                           <span className="text-xs text-red-600">{pronunciationError}</span>
                         ) : null}
                         {isTranslatingWord ? (
-                          <span className="text-sm text-foreground/70">Traduzindo…</span>
+                          <span className="text-sm text-foreground/70">Translating...</span>
                         ) : translationError ? (
                           <span className="text-sm text-red-600">{translationError}</span>
                         ) : translatedWord ? (
                           <span className="text-xl font-semibold text-foreground">{translatedWord}</span>
                         ) : (
-                          <span className="text-sm text-foreground/60">Nenhum resultado.</span>
+                          <span className="text-sm text-foreground/60">No result yet.</span>
                         )}
                         {detectedLanguageLabel ? (
                           <span className="text-xs text-foreground/60" title={`${detectedLanguageLabel} → ${selectedLanguage.name}`}>
@@ -1281,7 +1281,7 @@ const Space = () => {
                     ) : (
                       <div className="flex h-full w-full items-center justify-center">
                         <span className="text-sm text-foreground/60">
-                          Clique e arraste para selecionar palavras ou frases e traduzir para {selectedLanguage.name}.
+                          Click and drag to highlight words or phrases and translate them into {selectedLanguage.name}.
                         </span>
                       </div>
                     )}
@@ -1314,7 +1314,7 @@ const Space = () => {
                       <div className="absolute right-0 z-30 mt-3 w-[19rem] origin-top-right rounded-2xl border-4 border-foreground bg-[#fffef8] shadow-[16px_18px_0_-6px_#111,16px_18px_0_0_#fffef8]">
                         <div className="border-b border-foreground/20 p-2">
                           <Input
-                            placeholder="Buscar idioma…"
+                            placeholder="Search language..."
                             value={languageQuery}
                             onChange={(event) => setLanguageQuery(event.target.value)}
                             className="h-10 border-2 border-foreground/40 bg-background text-base shadow-none focus-visible:ring-0"
@@ -1372,7 +1372,7 @@ const Space = () => {
                               );
                             })
                           ) : (
-                            <li className="px-3 py-4 text-sm text-foreground/60">Nenhum idioma encontrado</li>
+                            <li className="px-3 py-4 text-sm text-foreground/60">No languages found</li>
                           )}
                         </ul>
                       </div>
