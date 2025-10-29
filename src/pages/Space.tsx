@@ -45,6 +45,25 @@ const getContentFromDocument = (content: string[] | undefined) => content?.join(
 
 const toggleButtons = ["≡"] as const;
 
+type FontOption = {
+  key: string;
+  label: string;
+  fontFamily: string;
+};
+
+const FONT_OPTIONS: FontOption[] = [
+  {
+    key: "handwritten",
+    label: "Rabisco padrão",
+    fontFamily: "'Patrick Hand', 'Gloria Hallelujah', cursive"
+  },
+  {
+    key: "oldpress",
+    label: "Jornal antigo",
+    fontFamily: "'Old Standard TT', 'Times New Roman', serif"
+  }
+];
+
 const SCRAPE_CACHE_KEY = "lingo-scraper-cache-v1";
 const SCRAPE_CACHE_TTL = 1000 * 60 * 60 * 12; // 12 hours
 
@@ -219,6 +238,8 @@ const Space = () => {
   const [scrapeInput, setScrapeInput] = useState("");
   const [fontSizeMultiplier, setFontSizeMultiplier] = useState(1);
   const [isBold, setIsBold] = useState(false);
+  const [selectedFontKey, setSelectedFontKey] = useState<string>(FONT_OPTIONS[0].key);
+  const [isFontMenuOpen, setIsFontMenuOpen] = useState(false);
   const [showLinks, setShowLinks] = useState(true);
   const [scrapeHistory, setScrapeHistory] = useState<string[]>([]);
   const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
@@ -229,6 +250,7 @@ const Space = () => {
   });
   const [wordBeingRemoved, setWordBeingRemoved] = useState<string | null>(null);
   const [linkBeingRemoved, setLinkBeingRemoved] = useState<string | null>(null);
+  const fontMenuRef = useRef<HTMLDivElement | null>(null);
   const languageMenuRef = useRef<HTMLDivElement | null>(null);
   const translationControllerRef = useRef<AbortController | null>(null);
   const [selectedTextInfo, setSelectedTextInfo] = useState<
@@ -481,6 +503,38 @@ const Space = () => {
   }, [languageQuery]);
 
   useEffect(() => {
+    if (!isFontMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      if (!fontMenuRef.current) {
+        return;
+      }
+
+      if (!fontMenuRef.current.contains(event.target as Node)) {
+        setIsFontMenuOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsFontMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isFontMenuOpen]);
+
+  useEffect(() => {
     if (!isLanguageMenuOpen) {
       setLanguageQuery("");
       return;
@@ -517,6 +571,11 @@ const Space = () => {
     setSelectedLanguageCode(language.code);
     setLanguageQuery("");
     setIsLanguageMenuOpen(false);
+  }, []);
+
+  const handleFontSelect = useCallback((option: FontOption) => {
+    setSelectedFontKey(option.key);
+    setIsFontMenuOpen(false);
   }, []);
 
   const handleRemoveWord = useCallback(
@@ -801,6 +860,18 @@ const Space = () => {
       })
       .filter((entry): entry is SpaceWord => Boolean(entry && entry.word.length > 0));
   }, [spaceQuery.data?.words]);
+
+  const selectedFont = useMemo(() => {
+    return FONT_OPTIONS.find((option) => option.key === selectedFontKey) ?? FONT_OPTIONS[0];
+  }, [selectedFontKey]);
+
+  const selectedHeadlineFont = useMemo(() => {
+    if (selectedFont.key === FONT_OPTIONS[0].key) {
+      return "'Gloria Hallelujah', 'Patrick Hand', cursive";
+    }
+
+    return selectedFont.fontFamily;
+  }, [selectedFont]);
 
   const recordScrapeHistoryEntry = (url: string) => {
     const normalized = normalizeCacheKey(url);
@@ -1087,9 +1158,67 @@ const Space = () => {
                     />
                     <button onClick={() => setFontSizeMultiplier(prev => Math.min(3, prev + 0.1))} className="sketch-input px-2 py-1 rounded-r" aria-label="Increase font size">+</button>
                   </div>
-                  <button onClick={() => setIsBold(!isBold)} className={`sketch-input px-2 py-1 ${isBold ? 'bg-foreground text-background' : ''}`}>
-                    Bold
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsBold(!isBold)}
+                      className={`sketch-input px-2 py-1 ${isBold ? "bg-foreground text-background" : ""}`}
+                    >
+                      Bold
+                    </button>
+                    <div ref={fontMenuRef} className="relative">
+                      <button
+                        type="button"
+                        className={cn(
+                          "sketch-input inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-transform duration-200 ease-out",
+                          isFontMenuOpen ? "bg-foreground text-background" : "hover:-translate-y-0.5"
+                        )}
+                        onClick={() => setIsFontMenuOpen((previous) => !previous)}
+                        aria-haspopup="listbox"
+                        aria-expanded={isFontMenuOpen}
+                        aria-controls="font-selector-menu"
+                      >
+                        <span>{selectedFont.label}</span>
+                        <ChevronDown
+                          className={cn(
+                            "h-4 w-4 transition-transform duration-200",
+                            isFontMenuOpen ? "-scale-y-100" : undefined
+                          )}
+                        />
+                      </button>
+                      {isFontMenuOpen ? (
+                        <div className="absolute left-0 z-20 mt-2 w-48 origin-top-left rounded-2xl border-4 border-foreground bg-[#fffef8] shadow-[12px_14px_0_-6px_#111,12px_14px_0_0_#fffef8]">
+                          <ul
+                            id="font-selector-menu"
+                            role="listbox"
+                            aria-label="Estilos de fonte"
+                            className="max-h-48 overflow-y-auto px-2 py-2"
+                          >
+                            {FONT_OPTIONS.map((option) => {
+                              const isActive = option.key === selectedFont.key;
+                              return (
+                                <li key={option.key} className="py-1">
+                                  <button
+                                    type="button"
+                                    role="option"
+                                    aria-selected={isActive}
+                                    onClick={() => handleFontSelect(option)}
+                                    className={cn(
+                                      "flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-all duration-150 ease-out",
+                                      isActive
+                                        ? "bg-foreground text-background shadow-[6px_6px_0_0_#111]"
+                                        : "hover:-translate-y-0.5 hover:bg-foreground/10"
+                                    )}
+                                  >
+                                    <span className="font-medium">{option.label}</span>
+                                    {isActive ? <Check className="h-4 w-4" /> : null}
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      ) : null}
+                    </div>
                 </div>
                 <div className="relative z-[150] w-full sm:max-w-xl sm:justify-self-center">
                   <div className="absolute right-0 top-0 z-[200] translate-x-1/3 -translate-y-1/3">
@@ -1257,7 +1386,9 @@ const Space = () => {
                   <NewsViewer
                     data={scrapedData}
                     fontSize={`${fontSizeMultiplier}em`}
-                    fontWeight={isBold ? 'bold' : 'normal'}
+                    fontWeight={isBold ? "bold" : "normal"}
+                    fontFamily={selectedFont.fontFamily}
+                    headlineFontFamily={selectedHeadlineFont}
                     onSelectionChange={handleSelectionChange}
                     activeSelectionNormalized={selectedTextInfo?.normalized ?? null}
                     translatedWord={translatedWord}

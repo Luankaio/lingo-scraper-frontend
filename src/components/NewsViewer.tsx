@@ -6,6 +6,8 @@ interface NewsViewerProps {
   data: NewsData;
   fontSize: string;
   fontWeight: string;
+  fontFamily?: string;
+  headlineFontFamily?: string;
   onSelectionChange?: (text: string | null) => void;
   activeSelectionNormalized?: string | null;
   translatedWord?: string | null;
@@ -41,6 +43,8 @@ const NewsViewer = ({
   data,
   fontSize,
   fontWeight,
+  fontFamily,
+  headlineFontFamily,
   onSelectionChange,
   activeSelectionNormalized,
   translatedWord,
@@ -58,6 +62,10 @@ const NewsViewer = ({
 
   const selectionKeySet = useMemo(() => new Set(selectionKeys), [selectionKeys]);
   const firstSelectionKey = selectionKeys[0] ?? null;
+  const effectiveFontFamily = fontFamily ?? "'Patrick Hand', 'Gloria Hallelujah', cursive";
+  const effectiveHeadlineFontFamily =
+    headlineFontFamily ??
+    (fontFamily ? fontFamily : "'Gloria Hallelujah', 'Patrick Hand', cursive");
 
   tokenRegistryRef.current.tokens = [];
 
@@ -445,20 +453,20 @@ const NewsViewer = ({
   return (
     <div
       className="h-full overflow-y-auto bg-[#fffef8] border-4 border-foreground shadow-[20px_24px_0_-6px_#111,20px_24px_0_0_#fffef8]"
-      style={{ fontFamily: "'Patrick Hand', cursive", fontSize, fontWeight }}
+      style={{ fontFamily: effectiveFontFamily, fontSize, fontWeight }}
     >
       <div className="news-frame">
         <header className="mb-12 flex flex-col gap-6">
           <div className="grid gap-5">
-            <h1 style={{ fontFamily: "'Gloria Hallelujah', cursive", fontSize: "3em", fontWeight: 700 }}>
+            <h1 style={{ fontFamily: effectiveHeadlineFontFamily, fontSize: "3em", fontWeight: 700 }}>
               {renderInteractiveText(data.title || "Sem título", "headline")}
             </h1>
-            <p style={{ fontSize: "1.8em" }}>
+            <p style={{ fontSize: "1.8em", fontFamily: effectiveFontFamily }}>
               {renderInteractiveText(data.subtitle || "", "subtitle")}
             </p>
             <div
               className="inline-flex items-center gap-2 px-4 py-2 border-2 border-foreground bg-background shadow-[6px_6px_0_0_#111] transform -rotate-1"
-              style={{ fontSize: "1em" }}
+              style={{ fontSize: "1em", fontFamily: effectiveFontFamily }}
             >
               Fonte: {data.source_url ? new URL(data.source_url).hostname : "Desconhecida"}
             </div>
@@ -471,7 +479,9 @@ const NewsViewer = ({
               alt={data.title ? `Imagem para ${data.title}` : "Imagem da matéria"}
               className="w-full border-4 border-foreground shadow-[12px_12px_0_0_#111] grayscale"
             />
-            <figcaption className="mt-2 text-center">{data.title || ""}</figcaption>
+            <figcaption className="mt-2 text-center" style={{ fontFamily: effectiveFontFamily }}>
+              {data.title || ""}
+            </figcaption>
           </figure>
         )}
         <section className="grid gap-11">
@@ -482,14 +492,14 @@ const NewsViewer = ({
             >
               <div className="pointer-events-none absolute inset-3 border-2 border-foreground/10" />
               {section.heading ? (
-                <h2 style={{ fontSize: "1.75em" }}>
+                <h2 style={{ fontSize: "1.75em", fontFamily: effectiveFontFamily }}>
                   {renderInteractiveText(section.heading, `section-${index}-heading`)}
                 </h2>
               ) : null}
               {(section.blocks ?? []).map((block: SectionBlock, bIndex) => {
                 if (block.type === "paragraph") {
                   return (
-                    <p key={bIndex} style={{ fontSize: "1.25em" }}>
+                    <p key={bIndex} style={{ fontSize: "1.25em", fontFamily: effectiveFontFamily }}>
                       {renderInteractiveText(block.text ?? "", `section-${index}-paragraph-${bIndex}`)}
                     </p>
                   );
@@ -499,8 +509,12 @@ const NewsViewer = ({
                   return (
                     <ul key={bIndex} className="list-none p-0 my-4">
                       {(block.items ?? []).map((item: string, iIndex) => (
-                        <li key={iIndex} className="relative mb-3 pl-8" style={{ fontSize: "1.25em" }}>
-                          <span className="absolute left-2 top-0" style={{ fontSize: "1em" }}>
+                        <li
+                          key={iIndex}
+                          className="relative mb-3 pl-8"
+                          style={{ fontSize: "1.25em", fontFamily: effectiveFontFamily }}
+                        >
+                          <span className="absolute left-2 top-0" style={{ fontSize: "1em", fontFamily: effectiveFontFamily }}>
                             ✦
                           </span>
                           {renderInteractiveText(item ?? "", `section-${index}-list-${bIndex}-${iIndex}`)}
